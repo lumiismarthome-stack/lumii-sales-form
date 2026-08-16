@@ -1,1289 +1,760 @@
-import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import { createClient } from "jsr:@supabase/supabase-js@2";
-
-const BOT_TOKEN = Deno.env.get("TELEGRAM_BOT_TOKEN") || "";
-const WEBHOOK_SECRET = Deno.env.get("TELEGRAM_WEBHOOK_SECRET") || "";
-const ALLOWED_CHAT_ID = Deno.env.get("TELEGRAM_ALLOWED_CHAT_ID") || "";
-const SALES_HUB_AUTH_EMAIL = Deno.env.get("SALES_HUB_AUTH_EMAIL") || "";
-const SALES_HUB_AUTH_PASSWORD = Deno.env.get("SALES_HUB_AUTH_PASSWORD") || "";
-const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "";
-const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
-const MINI_APP_BASE_URL = Deno.env.get("MINI_APP_BASE_URL") || "";
-
-const DRAFT_TABLE = "telegram_sales_hub_drafts";
-const MINI_APP_AUTH_MAX_AGE_SECONDS = 60 * 60;
-const MINI_APP_ROUTE = "/miniapp";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-};
-
-const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
-  auth: { persistSession: false },
-});
-
-class HttpError extends Error {
-  status: number;
-
-  constructor(status: number, message: string) {
-    super(message);
-    this.name = "HttpError";
-    this.status = status;
-  }
-}
-
-type DraftData = Record<string, any>;
-
-type TelegramMiniAppUser = {
-  id: number;
-  first_name?: string;
-  last_name?: string;
-  username?: string;
-};
-
-type TelegramMiniAppIdentity = {
-  user: TelegramMiniAppUser;
-  authDate: number;
-  queryId: string;
-};
-
-type OrderForm = {
-  saleDate: string;
-  sourceChannel: string;
-  sourceLabel: string;
-  orderType: string;
-  customerName: string;
-  customerPhone: string;
-  customerAddress: string;
-  productName: string;
-  quantity: number;
-  color: string;
-  serialNumber: string;
-  salePrice: number;
-  costPrice: number;
-  inboundShippingFee: number;
-  repairCost: number;
-  outboundShippingFee: number;
-  otherCost: number;
-  tipAmount: number;
-  agencyPartnerId: string;
-  agencyPartnerName: string;
-  partnerProfitRate: number;
-  paymentMethod: string;
-  paymentStatus: string;
-  shippingProvider: string;
-  shippingService: string;
-  trackingCode: string;
-  shippingStatus: string;
-  note: string;
-};
-
-function escapeHtml(text: unknown): string {
-  return String(text ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
-function formatMoney(value: unknown): string {
-  const amount = Number(value || 0);
-  return new Intl.NumberFormat("vi-VN").format(amount) + "đ";
-}
-
-function normalizeVietnamese(value: unknown): string {
-  return String(value ?? "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/đ/g, "d")
-    .replace(/Đ/g, "D")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim();
-}
-
-function todayIsoInVietnam(): string {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Ho_Chi_Minh",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(new Date());
-
-  const values: Record<string, string> = {};
-  for (const part of parts) values[part.type] = part.value;
-  return `${values.year}-${values.month}-${values.day}`;
-}
-
-function formatDateVi(isoDate: string): string {
-  const parts = String(isoDate || "").split("-");
-  return parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : isoDate;
-}
-
-function parseSaleDate(value: unknown): string {
-  const raw = String(value ?? "").trim();
-  if (!raw) return todayIsoInVietnam();
-
-  let match = raw.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})$/);
-  if (match) {
-    return `${match[3]}-${String(match[2]).padStart(2, "0")}-${String(match[1]).padStart(2, "0")}`;
-  }
-
-  match = raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
-  if (match) {
-    return `${match[1]}-${String(match[2]).padStart(2, "0")}-${String(match[3]).padStart(2, "0")}`;
-  }
-
-  throw new Error("Ngày bán phải theo dạng dd/mm/yyyy.");
-}
-
-function parseMoney(value: unknown): number {
-  const raw = String(value ?? "").trim().toLowerCase();
-  if (!raw) return 0;
-
-  const compact = raw.replace(/\s+/g, "").replace(/triệu/g, "tr").replace(/trieu/g, "tr");
-
-  let match = compact.match(/^(\d+)tr(\d+)$/);
-  if (match) {
-    const whole = Number(match[1]);
-    const fraction = Number(`0.${match[2]}`);
-    return Math.round((whole + fraction) * 1_000_000);
-  }
-
-  match = compact.match(/^(\d+(?:[.,]\d+)?)tr$/);
-  if (match) {
-    return Math.round(Number(match[1].replace(",", ".")) * 1_000_000);
-  }
-
-  match = compact.match(/^(\d+(?:[.,]\d+)?)(k|nghin|ngan)$/);
-  if (match) {
-    return Math.round(Number(match[1].replace(",", ".")) * 1_000);
-  }
-
-  const digits = compact.replace(/[^0-9-]/g, "");
-  const parsed = Number(digits);
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function sourceChannelLabel(value: string): string {
-  const labels: Record<string, string> = {
-    facebook: "Facebook",
-    zalo: "Zalo",
-    tiktok: "TikTok",
-    shopee: "Shopee",
-    returning_customer: "Khách quen",
-    phone: "Điện thoại",
-    telegram: "Telegram",
-    manual: "Nguồn khác",
-  };
-  return labels[value] || "Nguồn khác";
-}
-
-function pickAllowedValue(value: unknown, allowed: readonly string[], fallback: string): string {
-  const normalized = String(value ?? "").trim();
-  return allowed.includes(normalized) ? normalized : fallback;
-}
-
-function cleanText(value: unknown, maxLength: number): string {
-  return String(value ?? "").trim().slice(0, maxLength);
-}
-
-function orderTypeLabel(value: string): string {
-  const labels: Record<string, string> = {
-    normal: "Bán thường",
-    trade_in: "Thu cũ đổi mới",
-    used_resale: "Bán máy thu cũ",
-    agency_consignment: "Đại lý / Ký gửi",
-  };
-  return labels[value] || value;
-}
-
-function paymentMethodLabel(value: string): string {
-  const labels: Record<string, string> = {
-    bank_transfer: "Chuyển khoản",
-    cod: "COD",
-    cash: "Tiền mặt",
-  };
-  return labels[value] || value;
-}
-
-function paymentStatusLabel(value: string): string {
-  const labels: Record<string, string> = {
-    paid: "Đã nhận",
-    unpaid: "Chưa nhận",
-    pending: "Chờ kiểm tra",
-    partially_paid: "Nhận một phần",
-    refunded: "Đã hoàn tiền",
-  };
-  return labels[value] || value;
-}
-
-function shippingProviderLabel(value: string): string {
-  const labels: Record<string, string> = {
-    self_delivery: "Tự giao",
-    customer_pickup: "Khách đến lấy",
-    viettel_post: "Viettel Post",
-    other: "Khác",
-  };
-  return labels[value] || value;
-}
-
-function shippingStatusLabel(value: string): string {
-  const labels: Record<string, string> = {
-    pending: "Chưa tạo vận đơn",
-    created: "Đã tạo vận đơn",
-    picking: "Đang lấy hàng",
-    shipping: "Đang giao",
-    delivered: "Đã giao",
-    failed: "Giao thất bại",
-    returned: "Hoàn hàng",
-    cancelled: "Đã hủy",
-  };
-  return labels[value] || value;
-}
-
-function getOrderStatusFromShipping(shippingStatus: string): string {
-  if (shippingStatus === "delivered") return "completed";
-  if (shippingStatus === "shipping") return "shipping";
-  if (shippingStatus === "cancelled") return "cancelled";
-  return "confirmed";
-}
-
-function bytesToHex(bytes: ArrayBuffer): string {
-  return Array.from(new Uint8Array(bytes))
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
-}
-
-function timingSafeEqual(left: string, right: string): boolean {
-  if (left.length !== right.length) return false;
-
-  let difference = 0;
-  for (let index = 0; index < left.length; index += 1) {
-    difference |= left.charCodeAt(index) ^ right.charCodeAt(index);
-  }
-  return difference === 0;
-}
-
-async function hmacSha256(keyBytes: ArrayBuffer | Uint8Array, value: string): Promise<ArrayBuffer> {
-  const key = await crypto.subtle.importKey(
-    "raw",
-    keyBytes,
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"],
-  );
-
-  return crypto.subtle.sign("HMAC", key, new TextEncoder().encode(value));
-}
-
-async function validateTelegramInitData(initData: unknown): Promise<TelegramMiniAppIdentity> {
-  if (!BOT_TOKEN) throw new HttpError(500, "Bot chưa có TELEGRAM_BOT_TOKEN.");
-
-  const raw = String(initData ?? "");
-  if (!raw || raw.length > 16_384) {
-    throw new HttpError(401, "Không nhận được phiên xác thực Telegram hợp lệ.");
-  }
-
-  const params = new URLSearchParams(raw);
-  const receivedHash = String(params.get("hash") || "").toLowerCase();
-  if (!/^[a-f0-9]{64}$/.test(receivedHash)) {
-    throw new HttpError(401, "Chữ ký Telegram bị thiếu hoặc không hợp lệ.");
-  }
-
-  const dataCheckString = Array.from(params.entries())
-    .filter(([key]) => key !== "hash")
-    .sort(([left], [right]) => left.localeCompare(right))
-    .map(([key, value]) => `${key}=${value}`)
-    .join("\n");
-
-  const encoder = new TextEncoder();
-  const secretKey = await hmacSha256(encoder.encode("WebAppData"), BOT_TOKEN);
-  const signature = await hmacSha256(secretKey, dataCheckString);
-  const calculatedHash = bytesToHex(signature);
-
-  if (!timingSafeEqual(calculatedHash, receivedHash)) {
-    throw new HttpError(401, "Không xác minh được chữ ký Telegram.");
-  }
-
-  const authDate = Number(params.get("auth_date") || 0);
-  const now = Math.floor(Date.now() / 1000);
-  if (!Number.isFinite(authDate) || authDate <= 0 || authDate > now + 60) {
-    throw new HttpError(401, "Thời gian xác thực Telegram không hợp lệ.");
-  }
-  if (now - authDate > MINI_APP_AUTH_MAX_AGE_SECONDS) {
-    throw new HttpError(401, "Form đã mở quá lâu. Bà quay lại bot và mở form mới nha.");
-  }
-
-  let user: TelegramMiniAppUser;
-  try {
-    user = JSON.parse(String(params.get("user") || ""));
-  } catch {
-    throw new HttpError(401, "Không đọc được tài khoản Telegram.");
-  }
-
-  if (!user || !Number.isSafeInteger(Number(user.id))) {
-    throw new HttpError(401, "Telegram không gửi ID người dùng hợp lệ.");
-  }
-
-  const userId = String(user.id);
-  if (!ALLOWED_CHAT_ID || userId !== ALLOWED_CHAT_ID) {
-    throw new HttpError(403, "Tài khoản Telegram này không có quyền nhập đơn Lumii.");
-  }
-
-  return {
-    user: { ...user, id: Number(user.id) },
-    authDate,
-    queryId: String(params.get("query_id") || ""),
-  };
-}
-
-function jsonResponse(payload: unknown, status = 200): Response {
-  return new Response(JSON.stringify(payload), {
-    status,
-    headers: {
-      ...corsHeaders,
-      "Content-Type": "application/json; charset=utf-8",
-      "Cache-Control": "no-store",
-      "X-Content-Type-Options": "nosniff",
-    },
-  });
-}
-
-async function readMiniAppJson(req: Request): Promise<Record<string, any>> {
-  const contentLength = Number(req.headers.get("content-length") || 0);
-  if (contentLength > 128_000) {
-    throw new HttpError(413, "Dữ liệu form quá lớn.");
-  }
-
-  try {
-    const body = await req.json();
-    if (!body || typeof body !== "object" || Array.isArray(body)) {
-      throw new Error("Invalid JSON object");
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Lumii Sales Hub</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    :root {
+      --bg: #070d19;
+      --card: rgba(15, 23, 42, 0.75);
+      --card-border: rgba(56, 189, 248, 0.18);
+      --input-bg: rgba(11, 20, 38, 0.85);
+      --input-border: rgba(51, 65, 85, 0.7);
+      --primary: #38bdf8;
+      --primary-gradient: linear-gradient(135deg, #38bdf8 0%, #0284c7 100%);
+      --success-gradient: linear-gradient(135deg, #10b981 0%, #059669 100%);
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --accent: #38bdf8;
     }
-    return body as Record<string, any>;
-  } catch {
-    throw new HttpError(400, "Dữ liệu gửi lên không hợp lệ.");
-  }
-}
 
-async function getAdminSupabase() {
-  const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY") || "";
-
-  if (!SUPABASE_URL || !supabaseAnonKey) {
-    throw new Error("Thiếu cấu hình Supabase URL hoặc Anon Key.");
-  }
-
-  if (!SALES_HUB_AUTH_EMAIL || !SALES_HUB_AUTH_PASSWORD) {
-    throw new Error("Thiếu cấu hình email/password của Sales Hub.");
-  }
-
-  const supabase = createClient(SUPABASE_URL, supabaseAnonKey, {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-      detectSessionInUrl: false,
-    },
-  });
-
-  const { data, error } = await supabase.auth.signInWithPassword({
-    email: SALES_HUB_AUTH_EMAIL,
-    password: SALES_HUB_AUTH_PASSWORD,
-  });
-
-  if (error || !data.user) {
-    console.error("Sales Hub Supabase login error:", error);
-    throw new Error(`Đăng nhập thất bại: ${error?.message || "Không xác định"}`);
-  }
-
-  return supabase;
-}
-
-async function telegramCall(method: string, payload: Record<string, unknown>) {
-  if (!BOT_TOKEN) throw new Error("Thiếu TELEGRAM_BOT_TOKEN.");
-
-  const response = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/${method}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-
-  const body = await response.text();
-  let parsed: any = null;
-  try {
-    parsed = body ? JSON.parse(body) : null;
-  } catch {
-    parsed = null;
-  }
-
-  if (!response.ok || parsed?.ok === false) {
-    throw new Error(`Telegram ${method}: ${parsed?.description || body || "Unknown error"}`);
-  }
-
-  return parsed;
-}
-
-async function telegramSend(
-  chatId: string,
-  text: string,
-  replyMarkup?: Record<string, unknown>,
-) {
-  return telegramCall("sendMessage", {
-    chat_id: chatId,
-    text,
-    parse_mode: "HTML",
-    disable_web_page_preview: true,
-    ...(replyMarkup ? { reply_markup: replyMarkup } : {}),
-  });
-}
-
-async function telegramAnswerCallback(callbackQueryId: string, text = "") {
-  if (!callbackQueryId) return;
-  try {
-    await telegramCall("answerCallbackQuery", {
-      callback_query_id: callbackQueryId,
-      ...(text ? { text } : {}),
-    });
-  } catch (error) {
-    console.error("answerCallbackQuery error:", error);
-  }
-}
-
-async function telegramRemoveInlineKeyboard(chatId: string, messageId: number) {
-  if (!chatId || !messageId) return;
-  try {
-    await telegramCall("editMessageReplyMarkup", {
-      chat_id: chatId,
-      message_id: messageId,
-      reply_markup: { inline_keyboard: [] },
-    });
-  } catch (error) {
-    console.error("Remove inline keyboard error:", error);
-  }
-}
-
-async function getAgencyPartners() {
-  const supabase = await getAdminSupabase();
-  const { data, error } = await supabase.rpc("get_admin_agency_partners");
-
-  if (error) {
-    console.error("Get agency partners error:", error);
-    throw new Error(`Không đọc được quỹ ký gửi: ${error.message}`);
-  }
-
-  return data || [];
-}
-
-async function sendAgencyFunds(chatId: string) {
-  const data = await getAgencyPartners();
-
-  if (data.length === 0) {
-    await telegramSend(chatId, "💰 <b>QUỸ NGƯỜI KÝ GỬI</b>\n\nChưa có người ký gửi nào.");
-    return;
-  }
-
-  const rows = data.map((partner: any, index: number) =>
-    `<b>${index + 1}. ${escapeHtml(partner.partner_name)}</b>\n` +
-    `💵 Khả dụng: <b>${formatMoney(partner.current_fund_balance)}</b>\n` +
-    `📦 Vốn trong đơn: ${formatMoney(partner.capital_in_orders)}\n` +
-    `📈 Lợi nhuận chờ nhận: ${formatMoney(partner.profit_due)}\n` +
-    `🧾 Chờ thanh toán: ${formatMoney(partner.payout_due)}`
-  );
-
-  await telegramSend(chatId, "💰 <b>QUỸ NGƯỜI KÝ GỬI</b>\n\n" + rows.join("\n\n"));
-}
-
-function newDraftToken(): string {
-  return crypto.randomUUID().replace(/-/g, "").slice(0, 16);
-}
-
-async function createOrderDraft(chatId: string) {
-  const now = new Date().toISOString();
-  const draftToken = newDraftToken();
-
-  const { error: deleteError } = await supabaseAdmin
-    .from(DRAFT_TABLE)
-    .delete()
-    .eq("chat_id", chatId);
-
-  if (deleteError) console.error("Delete old draft error:", deleteError);
-
-  const { error } = await supabaseAdmin.from(DRAFT_TABLE).insert({
-    chat_id: chatId,
-    step: "choose_order_type",
-    status: "draft",
-    data: { draft_token: draftToken },
-    created_at: now,
-    updated_at: now,
-  });
-
-  if (error) {
-    console.error("Create draft error:", error);
-    throw new Error(`Không tạo được bản nháp: ${error.message}`);
-  }
-
-  return draftToken;
-}
-
-async function getOrderDraft(chatId: string) {
-  const { data, error } = await supabaseAdmin
-    .from(DRAFT_TABLE)
-    .select("chat_id, step, status, data, created_at, updated_at")
-    .eq("chat_id", chatId)
-    .maybeSingle();
-
-  if (error) {
-    console.error("Get draft error:", error);
-    throw new Error(`Không đọc được bản nháp: ${error.message}`);
-  }
-
-  return data;
-}
-
-async function updateOrderDraft(
-  chatId: string,
-  updates: { step?: string; status?: string; data?: DraftData },
-) {
-  const current = await getOrderDraft(chatId);
-  if (!current) throw new Error("Không tìm thấy bản nháp. Gõ /don để tạo lại.");
-
-  const payload: Record<string, unknown> = {
-    data: { ...(current.data || {}), ...(updates.data || {}) },
-    updated_at: new Date().toISOString(),
-  };
-
-  if (updates.step) payload.step = updates.step;
-  if (updates.status) payload.status = updates.status;
-
-  const { error } = await supabaseAdmin
-    .from(DRAFT_TABLE)
-    .update(payload)
-    .eq("chat_id", chatId);
-
-  if (error) {
-    console.error("Update draft error:", error);
-    throw new Error(`Không cập nhật được bản nháp: ${error.message}`);
-  }
-}
-
-async function deleteOrderDraft(chatId: string) {
-  const { error } = await supabaseAdmin.from(DRAFT_TABLE).delete().eq("chat_id", chatId);
-  if (error) {
-    console.error("Delete draft error:", error);
-    throw new Error(`Không hủy được bản nháp: ${error.message}`);
-  }
-}
-
-function draftTokenOf(draft: any): string {
-  return String(draft?.data?.draft_token || "");
-}
-
-function callbackToken(callbackData: string): string {
-  const parts = callbackData.split(":");
-  return parts[parts.length - 1] || "";
-}
-
-async function requireMatchingDraft(chatId: string, callbackData: string) {
-  const draft = await getOrderDraft(chatId);
-  if (!draft) throw new Error("Bản nháp này không còn tồn tại. Gõ /don để tạo mới.");
-
-  const expected = draftTokenOf(draft);
-  const actual = callbackToken(callbackData);
-  if (!expected || expected !== actual) {
-    throw new Error("Nút này thuộc bản nháp cũ. Gõ /don để tạo hoặc dùng đơn hiện tại.");
-  }
-
-  return draft;
-}
-
-async function sendMiniAppButton(chatId: string, draftData: DraftData, token: string) {
-  const type = String(draftData.order_type || "normal");
-  const partnerLine = type === "agency_consignment"
-    ? `\n🤝 Người ký gửi: <b>${escapeHtml(draftData.agency_partner_name || "")}</b>`
-    : "";
-
-  const miniAppHost = (MINI_APP_BASE_URL || "").trim().replace(/\/+$/, "");
-  const supabaseUrl = (SUPABASE_URL || "").trim().replace(/\/+$/, "");
-  const apiEndpoint = `${supabaseUrl}/functions/v1/lumii-sales-hub/miniapp/api`;
-
-  if (!miniAppHost) {
-    throw new Error("Thiếu cấu hình MINI_APP_BASE_URL trong Secrets.");
-  }
-
-  const url = new URL(miniAppHost);
-  url.searchParams.set("draft", token);
-  url.searchParams.set("api", apiEndpoint);
-
-  await telegramSend(
-    chatId,
-    "🧾 <b>FORM NHẬP ĐƠN LUMII</b>\n" +
-      `🏷️ Loại: <b>${escapeHtml(orderTypeLabel(type))}</b>` +
-      partnerLine +
-      "\n\nBấm nút dưới để nhập đơn, xem lợi nhuận rồi lưu thẳng vào sổ Lumii.",
-    {
-      inline_keyboard: [
-        [{ text: "📝 MỞ FORM NHẬP ĐƠN", web_app: { url: url.toString() } }],
-        [{ text: "❌ Hủy", callback_data: `order_cancel:${token}` }],
-      ],
-    },
-  );
-}
-
-async function startOrderDraft(chatId: string) {
-  const token = await createOrderDraft(chatId);
-
-  await telegramSend(chatId, "🧾 <b>TẠO ĐƠN MỚI</b>\n\nChọn loại đơn:", {
-    inline_keyboard: [
-      [{ text: "🛒 Bán thường", callback_data: `order_type:normal:${token}` }],
-      [{ text: "♻️ Thu cũ đổi mới", callback_data: `order_type:trade_in:${token}` }],
-      [{ text: "📦 Bán máy thu cũ", callback_data: `order_type:used_resale:${token}` }],
-      [{ text: "🤝 Đại lý / Ký gửi", callback_data: `order_type:agency_consignment:${token}` }],
-      [{ text: "❌ Hủy", callback_data: `order_cancel:${token}` }],
-    ],
-  });
-}
-
-async function sendAgencyPartnerPicker(chatId: string, token: string) {
-  const partners = await getAgencyPartners();
-
-  if (partners.length === 0) {
-    await telegramSend(chatId, "🤝 <b>NGƯỜI KÝ GỬI</b>\n\nHiện chưa có người ký gửi nào.");
-    return;
-  }
-
-  const keyboard = partners.map((partner: any) => [{
-    text: `${partner.partner_name} · ${formatMoney(partner.current_fund_balance)}`,
-    callback_data: `partner:${partner.partner_id}:${token}`,
-  }]);
-
-  keyboard.push([{ text: "❌ Hủy", callback_data: `order_cancel:${token}` }]);
-
-  await telegramSend(chatId, "🤝 <b>ĐẠI LÝ / KÝ GỬI</b>\n\nChọn người ký gửi:", {
-    inline_keyboard: keyboard,
-  });
-}
-
-function normalizeMiniAppOrder(raw: Record<string, any>, draftData: DraftData): OrderForm {
-  const sourceChannel = pickAllowedValue(
-    raw.sourceChannel,
-    ["facebook", "zalo", "tiktok", "shopee", "returning_customer", "phone", "telegram", "manual"],
-    "facebook",
-  );
-  const saleDate = parseSaleDate(raw.saleDate);
-  const parsedDate = new Date(`${saleDate}T00:00:00Z`);
-
-  if (Number.isNaN(parsedDate.getTime()) || parsedDate.toISOString().slice(0, 10) !== saleDate) {
-    throw new Error("Ngày bán không hợp lệ.");
-  }
-
-  return {
-    saleDate,
-    sourceChannel,
-    sourceLabel: sourceChannelLabel(sourceChannel),
-    orderType: pickAllowedValue(
-      draftData.order_type,
-      ["normal", "trade_in", "used_resale", "agency_consignment"],
-      "normal",
-    ),
-    customerName: cleanText(raw.customerName, 120),
-    customerPhone: cleanText(raw.customerPhone, 30),
-    customerAddress: cleanText(raw.customerAddress, 500),
-    productName: cleanText(raw.productName, 200),
-    quantity: Math.min(Math.max(Math.floor(parseMoney(raw.quantity) || 1), 1), 100),
-    color: cleanText(raw.color, 80),
-    serialNumber: cleanText(raw.serialNumber, 120),
-    salePrice: Math.max(parseMoney(raw.salePrice), 0),
-    costPrice: Math.max(parseMoney(raw.costPrice), 0),
-    inboundShippingFee: Math.max(parseMoney(raw.inboundShippingFee), 0),
-    repairCost: Math.max(parseMoney(raw.repairCost), 0),
-    outboundShippingFee: Math.max(parseMoney(raw.outboundShippingFee), 0),
-    otherCost: Math.max(parseMoney(raw.otherCost), 0),
-    tipAmount: Math.max(parseMoney(raw.tipAmount), 0),
-    agencyPartnerId: cleanText(draftData.agency_partner_id, 80),
-    agencyPartnerName: cleanText(draftData.agency_partner_name, 160),
-    partnerProfitRate: Math.min(Math.max(Number(draftData.partner_profit_rate || 10), 0), 100),
-    paymentMethod: pickAllowedValue(
-      raw.paymentMethod,
-      ["bank_transfer", "cod", "cash"],
-      "bank_transfer",
-    ),
-    paymentStatus: pickAllowedValue(
-      raw.paymentStatus,
-      ["paid", "unpaid", "pending", "partially_paid", "refunded"],
-      "paid",
-    ),
-    shippingProvider: pickAllowedValue(
-      raw.shippingProvider,
-      ["self_delivery", "customer_pickup", "viettel_post", "other"],
-      "self_delivery",
-    ),
-    shippingService: cleanText(raw.shippingService, 120),
-    trackingCode: cleanText(raw.trackingCode, 120),
-    shippingStatus: pickAllowedValue(
-      raw.shippingStatus,
-      ["pending", "created", "picking", "shipping", "delivered", "failed", "returned", "cancelled"],
-      "delivered",
-    ),
-    note: cleanText(raw.note, 2_000),
-  };
-}
-
-function validateOrder(order: OrderForm) {
-  if (!order.customerName) throw new Error("Thiếu dòng Khách.");
-  if (!order.customerPhone) throw new Error("Thiếu dòng SĐT.");
-  if (!order.productName) throw new Error("Thiếu dòng Sản phẩm.");
-  if (order.salePrice <= 0) throw new Error("Giá bán phải lớn hơn 0đ.");
-
-  const moneyValues = [
-    order.salePrice,
-    order.costPrice,
-    order.inboundShippingFee,
-    order.repairCost,
-    order.outboundShippingFee,
-    order.otherCost,
-    order.tipAmount,
-  ];
-  if (moneyValues.some((value) => !Number.isSafeInteger(value) || value < 0)) {
-    throw new Error("Có số tiền không hợp lệ hoặc quá lớn.");
-  }
-
-  if (order.orderType === "agency_consignment") {
-    if (!order.agencyPartnerId || !order.agencyPartnerName) {
-      throw new Error("Đơn Đại lý/Ký gửi chưa có Người ký gửi.");
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      -webkit-tap-highlight-color: transparent;
     }
-  }
-}
 
-async function calculatePreview(order: OrderForm) {
-  const saleTotal = order.salePrice * order.quantity;
-  const productCost = order.costPrice * order.quantity;
-  const extraCosts =
-    order.inboundShippingFee +
-    order.repairCost +
-    order.outboundShippingFee +
-    order.otherCost;
-  const costTotal = productCost + extraCosts;
-  const transactionProfit = saleTotal - costTotal;
-  const customerPaidTotal = saleTotal + order.tipAmount;
-
-  let partnerBalance = 0;
-  let agencyFundUsed = 0;
-  let partnerProfitAmount = 0;
-  let partnerPayoutAmount = 0;
-  let lumiiAdvanceAmount = 0;
-
-  if (order.orderType === "agency_consignment") {
-    const partners = await getAgencyPartners();
-    const partner = partners.find(
-      (item: any) => String(item.partner_id) === String(order.agencyPartnerId),
-    );
-
-    if (!partner) throw new Error("Người ký gửi không còn hoạt động.");
-
-    partnerBalance = Number(partner.current_fund_balance || 0);
-    const rate = Number(partner.default_profit_rate || order.partnerProfitRate || 10);
-    order.partnerProfitRate = rate;
-    agencyFundUsed = Math.min(partnerBalance, productCost);
-    partnerProfitAmount = Math.round((agencyFundUsed * rate) / 100);
-    partnerPayoutAmount = agencyFundUsed + partnerProfitAmount;
-    lumiiAdvanceAmount = costTotal - agencyFundUsed;
-  }
-
-  const lumiiProfitAmount = order.orderType === "agency_consignment"
-    ? transactionProfit - partnerProfitAmount + order.tipAmount
-    : transactionProfit + order.tipAmount;
-
-  return {
-    saleTotal,
-    productCost,
-    extraCosts,
-    costTotal,
-    transactionProfit,
-    customerPaidTotal,
-    partnerBalance,
-    agencyFundUsed,
-    partnerProfitAmount,
-    partnerPayoutAmount,
-    lumiiAdvanceAmount,
-    lumiiProfitAmount,
-  };
-}
-
-async function createSupabaseOrder(order: OrderForm) {
-  const supabase = await getAdminSupabase();
-  const payload = {
-    p_order: {
-      created_at: `${order.saleDate}T12:00:00+07:00`,
-      source_channel: order.sourceChannel || "manual",
-      order_type: order.orderType || "normal",
-      customer_name: order.customerName,
-      customer_phone: order.customerPhone,
-      customer_address: order.customerAddress,
-      status: getOrderStatusFromShipping(order.shippingStatus),
-      payment_method: order.paymentMethod,
-      payment_status: order.paymentStatus,
-      inbound_shipping_fee: order.inboundShippingFee,
-      repair_cost: order.repairCost,
-      outbound_shipping_fee: order.outboundShippingFee,
-      other_cost: order.otherCost,
-      tip_amount: order.tipAmount,
-      agency_partner_id: order.agencyPartnerId || "",
-      agency_partner_name: order.agencyPartnerName || "",
-      partner_topup_amount: 0,
-      partner_profit_rate: Number(order.partnerProfitRate) || 10,
-      internal_note: order.note,
-    },
-    p_item: {
-      product_name: order.productName,
-      color: order.color,
-      quantity: order.quantity,
-      sale_price: order.salePrice,
-      cost_price: order.costPrice,
-      serial_number: order.serialNumber,
-    },
-    p_shipment: {
-      shipping_provider: order.shippingProvider || "self_delivery",
-      shipping_service: order.shippingService,
-      tracking_code: order.trackingCode,
-      ship_status: order.shippingStatus,
-    },
-  };
-
-  const { data, error } = await supabase.rpc("create_admin_manual_order_v3", payload);
-  if (error) {
-    console.error("Create manual order RPC error:", error);
-    throw new Error(error.message || "Không lưu được đơn vào Supabase.");
-  }
-
-  return data || {};
-}
-
-function requireMiniAppDraftToken(value: unknown): string {
-  const token = String(value ?? "").trim();
-  if (!/^[a-f0-9]{16}$/i.test(token)) {
-    throw new HttpError(400, "Mã form không hợp lệ. Bà quay lại bot và gõ /don nha.");
-  }
-  return token;
-}
-
-async function requireMiniAppDraft(
-  identity: TelegramMiniAppIdentity,
-  draftToken: unknown,
-) {
-  const chatId = String(identity.user.id);
-  const token = requireMiniAppDraftToken(draftToken);
-  const draft = await getOrderDraft(chatId);
-
-  if (!draft) {
-    throw new HttpError(404, "Bản nháp không còn tồn tại. Bà quay lại bot và gõ /don nha.");
-  }
-  if (draftTokenOf(draft) !== token) {
-    throw new HttpError(409, "Đây là form của bản nháp cũ. Bà mở nút form mới nhất trong bot nha.");
-  }
-
-  return { chatId, token, draft };
-}
-
-function miniAppDefaultForm(draft: any): Record<string, unknown> {
-  const existing = draft?.data?.form;
-  if (existing && typeof existing === "object") return existing;
-
-  return {
-    saleDate: todayIsoInVietnam(),
-    sourceChannel: "facebook",
-    customerName: "",
-    customerPhone: "",
-    customerAddress: "",
-    productName: "",
-    color: "",
-    quantity: 1,
-    serialNumber: "",
-    salePrice: 0,
-    costPrice: 0,
-    inboundShippingFee: 0,
-    repairCost: 0,
-    outboundShippingFee: 0,
-    otherCost: 0,
-    tipAmount: 0,
-    paymentMethod: "bank_transfer",
-    paymentStatus: "paid",
-    shippingProvider: "self_delivery",
-    shippingService: "",
-    trackingCode: "",
-    shippingStatus: "delivered",
-    note: "",
-  };
-}
-
-async function miniAppPartnerSnapshot(draft: any) {
-  if (String(draft?.data?.order_type || "") !== "agency_consignment") return null;
-
-  const partnerId = String(draft?.data?.agency_partner_id || "");
-  const partners = await getAgencyPartners();
-  const partner = partners.find((item: any) => String(item.partner_id) === partnerId);
-
-  if (!partner) {
-    throw new HttpError(409, "Người ký gửi không còn hoạt động. Bà tạo lại đơn và chọn người khác nha.");
-  }
-
-  return {
-    id: String(partner.partner_id),
-    name: String(partner.partner_name || ""),
-    currentFundBalance: Number(partner.current_fund_balance || 0),
-    defaultProfitRate: Number(partner.default_profit_rate || 10),
-  };
-}
-
-async function handleMiniAppBootstrap(req: Request): Promise<Response> {
-  const body = await readMiniAppJson(req);
-  const identity = await validateTelegramInitData(body.initData);
-  const { draft } = await requireMiniAppDraft(identity, body.draftToken);
-
-  if (draft.status === "saving") {
-    throw new HttpError(409, "Đơn đang được lưu. Bà chờ một chút rồi quay lại Telegram nha.");
-  }
-
-  if (draft.status === "saved") {
-    return jsonResponse({
-      ok: true,
-      saved: true,
-      result: draft?.data?.save_result || {},
-    });
-  }
-
-  if (!["await_form", "preview"].includes(String(draft.step || ""))) {
-    throw new HttpError(409, "Bà cần chọn xong loại đơn và người ký gửi trong bot trước.");
-  }
-
-  const orderType = String(draft?.data?.order_type || "normal");
-  const partner = await miniAppPartnerSnapshot(draft);
-
-  return jsonResponse({
-    ok: true,
-    saved: false,
-    orderType,
-    orderTypeLabel: orderTypeLabel(orderType),
-    partner,
-    form: miniAppDefaultForm(draft),
-    hasPreview: draft.status === "preview" && Boolean(draft?.data?.form),
-  });
-}
-
-async function handleMiniAppPreview(req: Request): Promise<Response> {
-  const body = await readMiniAppJson(req);
-  const identity = await validateTelegramInitData(body.initData);
-  const { chatId, draft } = await requireMiniAppDraft(identity, body.draftToken);
-
-  if (draft.status === "saving" || draft.status === "saved") {
-    throw new HttpError(409, "Đơn này đang được xử lý hoặc đã lưu rồi.");
-  }
-  if (!["await_form", "preview"].includes(String(draft.step || ""))) {
-    throw new HttpError(409, "Bản nháp chưa sẵn sàng để nhập form.");
-  }
-
-  const order = normalizeMiniAppOrder(body.form || {}, draft.data || {});
-  validateOrder(order);
-  const preview = await calculatePreview(order);
-
-  await updateOrderDraft(chatId, {
-    step: "preview",
-    status: "preview",
-    data: {
-      form: order,
-      previewed_at: new Date().toISOString(),
-    },
-  });
-
-  return jsonResponse({ ok: true, order, preview });
-}
-
-async function handleMiniAppSave(req: Request): Promise<Response> {
-  const body = await readMiniAppJson(req);
-  const identity = await validateTelegramInitData(body.initData);
-  const { chatId, draft } = await requireMiniAppDraft(identity, body.draftToken);
-
-  if (draft.status === "saved") {
-    return jsonResponse({
-      ok: true,
-      alreadySaved: true,
-      result: draft?.data?.save_result || {},
-    });
-  }
-  if (draft.status === "saving") {
-    throw new HttpError(409, "Đơn đang được lưu. Bà đừng bấm lại nha.");
-  }
-
-  const order = draft?.data?.form as OrderForm | undefined;
-  if (draft.status !== "preview" || !order) {
-    throw new HttpError(409, "Bà cần bấm XEM TRƯỚC trước khi lưu đơn.");
-  }
-  validateOrder(order);
-
-  const { data: claimed, error: claimError } = await supabaseAdmin
-    .from(DRAFT_TABLE)
-    .update({ status: "saving", updated_at: new Date().toISOString() })
-    .eq("chat_id", chatId)
-    .eq("status", "preview")
-    .select("chat_id")
-    .maybeSingle();
-
-  if (claimError) throw new Error(`Không khóa được bản nháp: ${claimError.message}`);
-  if (!claimed) {
-    throw new HttpError(409, "Đơn đang được xử lý hoặc đã lưu rồi.");
-  }
-
-  let result: any;
-  try {
-    result = await createSupabaseOrder(order);
-  } catch (error) {
-    await supabaseAdmin
-      .from(DRAFT_TABLE)
-      .update({ status: "preview", updated_at: new Date().toISOString() })
-      .eq("chat_id", chatId)
-      .eq("status", "saving");
-    throw error;
-  }
-
-  const finalizedData = {
-    ...(draft.data || {}),
-    form: order,
-    save_result: result,
-    saved_at: new Date().toISOString(),
-  };
-  const { error: finalizeError } = await supabaseAdmin
-    .from(DRAFT_TABLE)
-    .update({
-      step: "saved",
-      status: "saved",
-      data: finalizedData,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("chat_id", chatId)
-    .eq("status", "saving");
-
-  if (finalizeError) {
-    console.error("Finalize Mini App draft error:", finalizeError);
-  }
-
-  try {
-    await telegramSend(
-      chatId,
-      "✅ <b>ĐÃ LƯU ĐƠN VÀO SỔ LUMII</b>\n\n" +
-        `📦 Mã đơn: <code>${escapeHtml(result?.order_code || "Đã tạo")}</code>\n` +
-        `👤 Khách: ${escapeHtml(order.customerName)}\n` +
-        `🤖 Sản phẩm: ${escapeHtml(order.productName)} ×${order.quantity}`,
-    );
-  } catch (telegramError) {
-    console.error("Đơn đã lưu nhưng không gửi được xác nhận Telegram:", telegramError);
-  }
-
-  return jsonResponse({ ok: true, alreadySaved: false, result });
-}
-
-async function maybeHandleMiniAppRequest(req: Request): Promise<Response | null> {
-  const pathname = new URL(req.url).pathname.replace(/\/+$/, "");
-  const isMiniAppApi = pathname.includes(`${MINI_APP_ROUTE}/api/`);
-
-  if (!isMiniAppApi) return null;
-
-  if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
-  }
-
-  try {
-    if (req.method !== "POST") {
-      return jsonResponse({ ok: false, error: "Phương thức không được hỗ trợ." }, 405);
+    body {
+      background-color: var(--bg);
+      background-image: 
+        radial-gradient(at 0% 0%, rgba(56, 189, 248, 0.12) 0px, transparent 50%),
+        radial-gradient(at 100% 100%, rgba(16, 185, 129, 0.08) 0px, transparent 50%);
+      color: var(--text);
+      padding: 18px 14px 40px;
+      min-height: 100vh;
     }
-    if (pathname.endsWith(`${MINI_APP_ROUTE}/api/bootstrap`)) {
-      return await handleMiniAppBootstrap(req);
+
+    .header {
+      text-align: center;
+      margin-bottom: 22px;
     }
-    if (pathname.endsWith(`${MINI_APP_ROUTE}/api/preview`)) {
-      return await handleMiniAppPreview(req);
+
+    .brand {
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 1.5px;
+      color: #38bdf8;
+      text-transform: uppercase;
+      margin-bottom: 6px;
     }
-    if (pathname.endsWith(`${MINI_APP_ROUTE}/api/save`)) {
-      return await handleMiniAppSave(req);
+
+    .title {
+      font-size: 24px;
+      font-weight: 800;
+      color: #ffffff;
+      letter-spacing: -0.5px;
+      margin-bottom: 4px;
     }
-    return jsonResponse({ ok: false, error: "Không tìm thấy API Mini App." }, 404);
-  } catch (error: any) {
-    const status = error instanceof HttpError ? error.status : 500;
-    console.error("Lumii Mini App error:", error);
-    return jsonResponse(
-      { ok: false, error: error?.message || "Mini App gặp lỗi không xác định." },
-      status,
-    );
-  }
-}
 
-async function handleOrderCallback(callbackQuery: any) {
-  const callbackId = String(callbackQuery?.id || "");
-  const chatId = String(callbackQuery?.message?.chat?.id || "");
-  const messageId = Number(callbackQuery?.message?.message_id || 0);
-  const callbackData = String(callbackQuery?.data || "");
+    .subtitle {
+      font-size: 13px;
+      color: #94a3b8;
+      margin-bottom: 12px;
+    }
 
-  await telegramAnswerCallback(callbackId);
+    .type-pill {
+      display: inline-block;
+      padding: 5px 14px;
+      background: rgba(56, 189, 248, 0.12);
+      border: 1px solid rgba(56, 189, 248, 0.35);
+      border-radius: 9999px;
+      color: #38bdf8;
+      font-size: 12.5px;
+      font-weight: 600;
+    }
 
-  if (!chatId || !ALLOWED_CHAT_ID || chatId !== ALLOWED_CHAT_ID) return;
+    .partner-banner {
+      background: linear-gradient(135deg, rgba(245, 158, 11, 0.15) 0%, rgba(217, 119, 6, 0.05) 100%);
+      border: 1px solid rgba(245, 158, 11, 0.35);
+      border-radius: 14px;
+      padding: 12px 14px;
+      margin-bottom: 16px;
+      display: none;
+    }
 
-  if (callbackData.startsWith("order_cancel:")) {
-    await requireMatchingDraft(chatId, callbackData);
-    await telegramRemoveInlineKeyboard(chatId, messageId);
-    await deleteOrderDraft(chatId);
-    await telegramSend(chatId, "❌ <b>Đã hủy tạo đơn.</b>");
-    return;
-  }
+    .partner-name {
+      font-size: 14px;
+      font-weight: 700;
+      color: #fbbf24;
+    }
 
-  if (callbackData.startsWith("order_type:")) {
-    const draft = await requireMatchingDraft(chatId, callbackData);
-    const parts = callbackData.split(":");
-    const orderType = parts[1] || "";
-    const token = draftTokenOf(draft);
+    .partner-meta {
+      font-size: 12px;
+      color: #fde68a;
+      margin-top: 3px;
+    }
 
-    const allowed = new Set(["normal", "trade_in", "used_resale", "agency_consignment"]);
-    if (!allowed.has(orderType)) throw new Error("Loại đơn không hợp lệ.");
+    .sec-label {
+      font-size: 12px;
+      font-weight: 700;
+      color: #38bdf8;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      margin: 18px 4px 8px;
+    }
 
-    await telegramRemoveInlineKeyboard(chatId, messageId);
+    .card {
+      background: var(--card);
+      backdrop-filter: blur(12px);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      padding: 16px 14px;
+      margin-bottom: 14px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+    }
 
-    if (orderType === "agency_consignment") {
-      await updateOrderDraft(chatId, {
-        step: "choose_agency_partner",
-        data: { order_type: orderType },
+    .form-group {
+      margin-bottom: 12px;
+    }
+
+    .form-group:last-child {
+      margin-bottom: 0;
+    }
+
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    label {
+      display: block;
+      font-size: 12px;
+      color: #94a3b8;
+      margin-bottom: 5px;
+      font-weight: 600;
+    }
+
+    input, select, textarea {
+      width: 100%;
+      background: var(--input-bg);
+      border: 1px solid var(--input-border);
+      border-radius: 10px;
+      padding: 11px 12px;
+      color: #ffffff;
+      font-size: 14px;
+      outline: none;
+      transition: all 0.2s ease;
+    }
+
+    input:focus, select:focus, textarea:focus {
+      border-color: #38bdf8;
+      box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.15);
+    }
+
+    textarea {
+      resize: vertical;
+      min-height: 64px;
+    }
+
+    /* GRID PREVIEW HỘP TRẮNG ĐẸP NHƯ GỐC */
+    .grid-preview {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+
+    .box-stat {
+      background: rgba(255, 255, 255, 0.95);
+      border-radius: 14px;
+      padding: 14px 12px;
+      color: #0f172a;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+
+    .box-stat-full {
+      grid-column: span 2;
+    }
+
+    .stat-label {
+      font-size: 12px;
+      font-weight: 500;
+      color: #64748b;
+      margin-bottom: 4px;
+    }
+
+    .stat-val {
+      font-size: 16px;
+      font-weight: 800;
+      color: #0f172a;
+    }
+
+    .box-final-profit {
+      background: linear-gradient(135deg, rgba(16, 185, 129, 0.2) 0%, rgba(5, 150, 105, 0.1) 100%);
+      border: 1.5px solid #10b981;
+      border-radius: 14px;
+      padding: 16px 14px;
+      grid-column: span 2;
+    }
+
+    .box-final-profit .stat-label {
+      color: #34d399;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+    }
+
+    .box-final-profit .stat-val {
+      color: #34d399;
+      font-size: 26px;
+      font-weight: 900;
+      margin-top: 2px;
+    }
+
+    .btn {
+      width: 100%;
+      padding: 15px;
+      border-radius: 12px;
+      font-size: 15px;
+      font-weight: 800;
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      letter-spacing: 0.5px;
+      margin-top: 12px;
+      transition: all 0.2s ease;
+    }
+
+    .btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    .btn-preview {
+      background: #38bdf8;
+      color: #04101e;
+      box-shadow: 0 4px 16px rgba(56, 189, 248, 0.3);
+    }
+
+    .btn-preview:active {
+      transform: scale(0.99);
+    }
+
+    .btn-save {
+      background: #10b981;
+      color: #ffffff;
+      box-shadow: 0 4px 16px rgba(16, 185, 129, 0.35);
+      display: none;
+    }
+
+    .btn-save:active {
+      transform: scale(0.99);
+    }
+
+    .toast {
+      position: fixed;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 10px 18px;
+      border-radius: 10px;
+      font-size: 13.5px;
+      font-weight: 600;
+      z-index: 1000;
+      display: none;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+      max-width: 90%;
+      text-align: center;
+    }
+
+    .toast-error { background: #ef4444; color: #fff; }
+    .toast-success { background: #10b981; color: #fff; }
+
+    .loading-screen {
+      position: fixed;
+      inset: 0;
+      background: var(--bg);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 50;
+      gap: 14px;
+      color: #94a3b8;
+      font-size: 14px;
+    }
+
+    .spinner {
+      width: 36px;
+      height: 36px;
+      border: 3px solid rgba(56, 189, 248, 0.15);
+      border-top-color: #38bdf8;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .saved-view {
+      display: none;
+      text-align: center;
+      padding: 60px 16px;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="loading" class="loading-screen">
+    <div class="spinner"></div>
+    <div>Đang tải loại đơn...</div>
+  </div>
+
+  <div id="toast" class="toast"></div>
+
+  <div id="savedView" class="saved-view">
+    <div style="font-size: 54px; margin-bottom: 16px;">✅</div>
+    <h2 style="font-size: 22px; font-weight: 800; margin-bottom: 8px;">Đã lưu đơn thành công!</h2>
+    <p style="color: #94a3b8; font-size: 14px; margin-bottom: 28px;">Dữ liệu đã được cập nhật vào hệ thống Lumii.</p>
+    <button class="btn btn-preview" onclick="tg.close()">Đóng cửa sổ</button>
+  </div>
+
+  <form id="orderForm" style="display: none;">
+    <div class="header">
+      <div class="brand">LUMII SMARTHOME</div>
+      <div id="formHeading" class="title">Nhập đơn bán hàng</div>
+      <div class="subtitle">Điền một lần, xem lợi nhuận rồi lưu thẳng vào sổ Lumii.</div>
+      <div id="orderTypeBadge" class="type-pill">Đang tải...</div>
+    </div>
+
+    <div id="partnerBox" class="partner-banner">
+      <div id="partnerName" class="partner-name">🤝 Người ký gửi</div>
+      <div id="partnerMeta" class="partner-meta">Quỹ khả dụng: 0đ</div>
+    </div>
+
+    <div class="sec-label">1. Thông tin khách & nguồn</div>
+    <div class="card">
+      <div class="form-row">
+        <div class="form-group">
+          <label>Ngày bán</label>
+          <input type="date" id="saleDate" required>
+        </div>
+        <div class="form-group">
+          <label>Nguồn khách</label>
+          <select id="sourceChannel">
+            <option value="facebook">Facebook</option>
+            <option value="zalo">Zalo</option>
+            <option value="tiktok">TikTok</option>
+            <option value="shopee">Shopee</option>
+            <option value="returning_customer">Khách quen</option>
+            <option value="phone">Điện thoại</option>
+            <option value="telegram">Telegram</option>
+            <option value="manual">Nguồn khác</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Tên khách *</label>
+          <input type="text" id="customerName" placeholder="Ví dụ: Anh Nam" required>
+        </div>
+        <div class="form-group">
+          <label>Số điện thoại *</label>
+          <input type="text" id="customerPhone" placeholder="090..." required>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Địa chỉ nhận hàng</label>
+        <input type="text" id="customerAddress" placeholder="Số nhà, đường, quận/huyện...">
+      </div>
+    </div>
+
+    <div class="sec-label">2. Sản phẩm & Doanh thu</div>
+    <div class="card">
+      <div class="form-group">
+        <label>Tên sản phẩm *</label>
+        <input type="text" id="productName" placeholder="Ví dụ: Lumii V9 Max" required>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Màu sắc</label>
+          <input type="text" id="color" placeholder="Trắng / Đen">
+        </div>
+        <div class="form-group">
+          <label>Số lượng</label>
+          <input type="number" id="quantity" value="1" min="1" required>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Số Serial / IMEI</label>
+        <input type="text" id="serialNumber" placeholder="Nhập nếu có">
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Giá bán (1 máy) *</label>
+          <input type="text" id="salePrice" placeholder="Ví dụ: 6.000.000" required>
+        </div>
+        <div class="form-group">
+          <label>Giá vốn (1 máy)</label>
+          <input type="text" id="costPrice" placeholder="Ví dụ: 4.000.000">
+        </div>
+      </div>
+    </div>
+
+    <div class="sec-label">3. Chi phí phát sinh & Phụ phí</div>
+    <div class="card">
+      <div class="form-row">
+        <div class="form-group">
+          <label>Ship nhập hàng</label>
+          <input type="text" id="inboundShippingFee" placeholder="0">
+        </div>
+        <div class="form-group">
+          <label>Chi phí sửa / dọn</label>
+          <input type="text" id="repairCost" placeholder="0">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Ship giao cho khách</label>
+          <input type="text" id="outboundShippingFee" placeholder="0">
+        </div>
+        <div class="form-group">
+          <label>Chi phí khác</label>
+          <input type="text" id="otherCost" placeholder="0">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Tiền Tip / Phụ thu thêm</label>
+        <input type="text" id="tipAmount" placeholder="0">
+      </div>
+    </div>
+
+    <div class="sec-label">4. Vận chuyển & Thanh toán</div>
+    <div class="card">
+      <div class="form-row">
+        <div class="form-group">
+          <label>Hình thức ship</label>
+          <select id="shippingProvider">
+            <option value="self_delivery">Tự giao</option>
+            <option value="customer_pickup">Khách đến lấy</option>
+            <option value="viettel_post">Viettel Post</option>
+            <option value="other">Khác</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Trạng thái giao</label>
+          <select id="shippingStatus">
+            <option value="delivered">Đã giao</option>
+            <option value="shipping">Đang giao</option>
+            <option value="picking">Đang lấy hàng</option>
+            <option value="created">Đã tạo đơn</option>
+            <option value="pending">Chưa tạo vận đơn</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Thanh toán</label>
+          <select id="paymentMethod">
+            <option value="bank_transfer">Chuyển khoản</option>
+            <option value="cod">COD</option>
+            <option value="cash">Tiền mặt</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Trạng thái tiền</label>
+          <select id="paymentStatus">
+            <option value="paid">Đã nhận</option>
+            <option value="unpaid">Chưa nhận</option>
+            <option value="partially_paid">Một phần</option>
+            <option value="pending">Chờ kiểm tra</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Mã vận đơn</label>
+          <input type="text" id="trackingCode" placeholder="Mã theo dõi...">
+        </div>
+        <div class="form-group">
+          <label>Dịch vụ ship</label>
+          <input type="text" id="shippingService" placeholder="Nhanh, Tiết kiệm...">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Ghi chú nội bộ</label>
+        <textarea id="note" placeholder="Thông tin bảo hành, lưu ý..."></textarea>
+      </div>
+    </div>
+
+    <!-- KHUNG TÍNH TOÁN XEM TRƯỚC GỐC CHUẨN ĐẸP -->
+    <div id="previewCard" style="display: none; margin-top: 10px;">
+      <div class="grid-preview">
+        <div class="box-stat">
+          <div class="stat-label">Tổng tiền hàng</div>
+          <div id="pSaleTotal" class="stat-val">0đ</div>
+        </div>
+        <div class="box-stat">
+          <div class="stat-label">Tổng chi phí</div>
+          <div id="pCostTotal" class="stat-val">0đ</div>
+        </div>
+        <div class="box-stat">
+          <div class="stat-label">Lãi giao dịch</div>
+          <div id="pTxProfit" class="stat-val">0đ</div>
+        </div>
+        <div class="box-stat">
+          <div class="stat-label">Tổng khách thanh toán</div>
+          <div id="pCustPaid" class="stat-val">0đ</div>
+        </div>
+
+        <div id="partnerFinancials" style="display: contents;">
+          <div class="box-stat">
+            <div class="stat-label">Quỹ hiện có</div>
+            <div id="pPartnerBal" class="stat-val">0đ</div>
+          </div>
+          <div class="box-stat">
+            <div class="stat-label">Vốn quỹ dùng</div>
+            <div id="pFundUsed" class="stat-val">0đ</div>
+          </div>
+          <div class="box-stat">
+            <div id="pPartnerRateLabel" class="stat-label">Lời người ký gửi 10%</div>
+            <div id="pPartnerProfit" class="stat-val">0đ</div>
+          </div>
+          <div class="box-stat">
+            <div class="stat-label">Tổng trả người ký gửi</div>
+            <div id="pPartnerPayout" class="stat-val">0đ</div>
+          </div>
+          <div class="box-stat box-stat-full">
+            <div class="stat-label">Lumii ứng</div>
+            <div id="pLumiiAdvance" class="stat-val">0đ</div>
+          </div>
+        </div>
+
+        <div class="box-final-profit">
+          <div class="stat-label">LỢI NHUẬN CUỐI LUMII</div>
+          <div id="pLumiiProfit" class="stat-val">0đ</div>
+        </div>
+      </div>
+    </div>
+
+    <button type="button" id="btnPreview" class="btn btn-preview">XEM TRƯỚC</button>
+    <button type="button" id="btnSave" class="btn btn-save">✅ LƯU ĐƠN</button>
+  </form>
+
+  <script>
+    const tg = window.Telegram?.WebApp;
+    const urlParams = new URLSearchParams(window.location.search);
+    const draftToken = urlParams.get("draft") || "";
+    const apiEndpoint = urlParams.get("api") || "";
+
+    const loadingEl = document.getElementById("loading");
+    const formEl = document.getElementById("orderForm");
+    const savedViewEl = document.getElementById("savedView");
+    const toastEl = document.getElementById("toast");
+    const btnPreview = document.getElementById("btnPreview");
+    const btnSave = document.getElementById("btnSave");
+    const previewCard = document.getElementById("previewCard");
+
+    let currentOrderType = "normal";
+
+    function showToast(msg, type = "error") {
+      toastEl.textContent = msg;
+      toastEl.className = `toast toast-${type}`;
+      toastEl.style.display = "block";
+      setTimeout(() => { toastEl.style.display = "none"; }, 3000);
+    }
+
+    function formatMoney(num) {
+      return new Intl.NumberFormat("vi-VN").format(Number(num || 0)) + "đ";
+    }
+
+    function parseMoneyInput(val) {
+      const raw = String(val || "").trim().toLowerCase();
+      if (!raw) return 0;
+      const compact = raw.replace(/\s+/g, "").replace(/triệu/g, "tr").replace(/trieu/g, "tr");
+      let m = compact.match(/^(\d+)tr(\d+)$/);
+      if (m) return Math.round((Number(m[1]) + Number(`0.${m[2]}`)) * 1000000);
+      m = compact.match(/^(\d+(?:[.,]\d+)?)tr$/);
+      if (m) return Math.round(Number(m[1].replace(",", ".")) * 1000000);
+      m = compact.match(/^(\d+(?:[.,]\d+)?)(k|nghin|ngan)$/);
+      if (m) return Math.round(Number(m[1].replace(",", ".")) * 1000);
+      const parsed = Number(compact.replace(/[^0-9-]/g, ""));
+      return Number.isFinite(parsed) ? parsed : 0;
+    }
+
+    function getFormData() {
+      return {
+        saleDate: document.getElementById("saleDate").value,
+        sourceChannel: document.getElementById("sourceChannel").value,
+        customerName: document.getElementById("customerName").value,
+        customerPhone: document.getElementById("customerPhone").value,
+        customerAddress: document.getElementById("customerAddress").value,
+        productName: document.getElementById("productName").value,
+        color: document.getElementById("color").value,
+        quantity: document.getElementById("quantity").value,
+        serialNumber: document.getElementById("serialNumber").value,
+        salePrice: parseMoneyInput(document.getElementById("salePrice").value),
+        costPrice: parseMoneyInput(document.getElementById("costPrice").value),
+        inboundShippingFee: parseMoneyInput(document.getElementById("inboundShippingFee").value),
+        repairCost: parseMoneyInput(document.getElementById("repairCost").value),
+        outboundShippingFee: parseMoneyInput(document.getElementById("outboundShippingFee").value),
+        otherCost: parseMoneyInput(document.getElementById("otherCost").value),
+        tipAmount: parseMoneyInput(document.getElementById("tipAmount").value),
+        shippingProvider: document.getElementById("shippingProvider").value,
+        shippingStatus: document.getElementById("shippingStatus").value,
+        paymentMethod: document.getElementById("paymentMethod").value,
+        paymentStatus: document.getElementById("paymentStatus").value,
+        trackingCode: document.getElementById("trackingCode").value,
+        shippingService: document.getElementById("shippingService").value,
+        note: document.getElementById("note").value,
+      };
+    }
+
+    function fillForm(f) {
+      if (!f) return;
+      if (f.saleDate) document.getElementById("saleDate").value = f.saleDate;
+      if (f.sourceChannel) document.getElementById("sourceChannel").value = f.sourceChannel;
+      if (f.customerName) document.getElementById("customerName").value = f.customerName;
+      if (f.customerPhone) document.getElementById("customerPhone").value = f.customerPhone;
+      if (f.customerAddress) document.getElementById("customerAddress").value = f.customerAddress;
+      if (f.productName) document.getElementById("productName").value = f.productName;
+      if (f.color) document.getElementById("color").value = f.color;
+      if (f.quantity) document.getElementById("quantity").value = f.quantity;
+      if (f.serialNumber) document.getElementById("serialNumber").value = f.serialNumber;
+      if (f.salePrice) document.getElementById("salePrice").value = formatMoney(f.salePrice).replace("đ", "");
+      if (f.costPrice) document.getElementById("costPrice").value = formatMoney(f.costPrice).replace("đ", "");
+      if (f.inboundShippingFee) document.getElementById("inboundShippingFee").value = formatMoney(f.inboundShippingFee).replace("đ", "");
+      if (f.repairCost) document.getElementById("repairCost").value = formatMoney(f.repairCost).replace("đ", "");
+      if (f.outboundShippingFee) document.getElementById("outboundShippingFee").value = formatMoney(f.outboundShippingFee).replace("đ", "");
+      if (f.otherCost) document.getElementById("otherCost").value = formatMoney(f.otherCost).replace("đ", "");
+      if (f.tipAmount) document.getElementById("tipAmount").value = formatMoney(f.tipAmount).replace("đ", "");
+      if (f.shippingProvider) document.getElementById("shippingProvider").value = f.shippingProvider;
+      if (f.shippingStatus) document.getElementById("shippingStatus").value = f.shippingStatus;
+      if (f.paymentMethod) document.getElementById("paymentMethod").value = f.paymentMethod;
+      if (f.paymentStatus) document.getElementById("paymentStatus").value = f.paymentStatus;
+      if (f.trackingCode) document.getElementById("trackingCode").value = f.trackingCode;
+      if (f.shippingService) document.getElementById("shippingService").value = f.shippingService;
+      if (f.note) document.getElementById("note").value = f.note;
+    }
+
+    async function callApi(action, payload = {}) {
+      const url = `${apiEndpoint}/${action}`;
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          initData: tg?.initData || "",
+          draftToken: draftToken,
+          ...payload
+        })
       });
-      await sendAgencyPartnerPicker(chatId, token);
-      return;
+      const data = await res.json();
+      if (!res.ok || data.ok === false) {
+        throw new Error(data.error || "Có lỗi xảy ra khi xử lý.");
+      }
+      return data;
     }
 
-    await updateOrderDraft(chatId, {
-      step: "await_form",
-      data: { order_type: orderType },
-    });
+    function renderPreview(p, isAgency) {
+      document.getElementById("pSaleTotal").textContent = formatMoney(p.saleTotal);
+      document.getElementById("pCostTotal").textContent = formatMoney(p.costTotal);
+      document.getElementById("pTxProfit").textContent = formatMoney(p.transactionProfit);
+      document.getElementById("pCustPaid").textContent = formatMoney(p.customerPaidTotal);
+      document.getElementById("pLumiiProfit").textContent = formatMoney(p.lumiiProfitAmount);
 
-    const updated = await getOrderDraft(chatId);
-    await telegramSend(chatId, `✅ Đã chọn: <b>${escapeHtml(orderTypeLabel(orderType))}</b>`);
-    await sendMiniAppButton(chatId, updated?.data || {}, token);
-    return;
-  }
-
-  if (callbackData.startsWith("partner:")) {
-    const draft = await requireMatchingDraft(chatId, callbackData);
-    const parts = callbackData.split(":");
-    const partnerId = parts[1] || "";
-
-    const partners = await getAgencyPartners();
-    const partner = partners.find((item: any) => String(item.partner_id) === partnerId);
-    if (!partner) throw new Error("Không tìm thấy người ký gửi hoặc người này đã ngừng hoạt động.");
-
-    await telegramRemoveInlineKeyboard(chatId, messageId);
-
-    await updateOrderDraft(chatId, {
-      step: "await_form",
-      data: {
-        agency_partner_id: partner.partner_id,
-        agency_partner_name: partner.partner_name,
-        partner_profit_rate: Number(partner.default_profit_rate || 10),
-      },
-    });
-
-    const updated = await getOrderDraft(chatId);
-    await telegramSend(
-      chatId,
-      "✅ <b>Đã chọn người ký gửi</b>\n\n" +
-        `🤝 ${escapeHtml(partner.partner_name)}\n` +
-        `💵 Quỹ khả dụng: <b>${formatMoney(partner.current_fund_balance)}</b>`,
-    );
-    await sendMiniAppButton(chatId, updated?.data || {}, draftTokenOf(updated));
-    return;
-  }
-}
-
-Deno.serve(async (req: Request) => {
-  let chatId = "";
-
-  try {
-    const miniAppResponse = await maybeHandleMiniAppRequest(req);
-    if (miniAppResponse) return miniAppResponse;
-
-    const telegramSecret = req.headers.get("x-telegram-bot-api-secret-token");
-    if (!WEBHOOK_SECRET || telegramSecret !== WEBHOOK_SECRET) {
-      console.warn("Secret token không khớp hoặc bị thiếu.");
-      return new Response("Unauthorized", { status: 401 });
-    }
-
-    const update = await req.json();
-
-    if (update?.callback_query) {
-      chatId = String(update.callback_query?.message?.chat?.id || "");
-      await handleOrderCallback(update.callback_query);
-      return Response.json({ ok: true });
-    }
-
-    const message = update?.message;
-    if (!message?.chat?.id) return Response.json({ ok: true });
-
-    chatId = String(message.chat.id);
-    if (!ALLOWED_CHAT_ID || chatId !== ALLOWED_CHAT_ID) {
-      console.warn(`Chat ID không hợp lệ: ${chatId}`);
-      return Response.json({ ok: true });
-    }
-
-    const text = String(message.text || "").trim();
-
-    if (/^\/(start|help)(?:@\w+)?$/i.test(text)) {
-      await telegramSend(
-        chatId,
-        "👑 <b>LUMII SALES HUB</b>\n\n" +
-          "• /don - Tạo đơn mới bằng Mini App\n" +
-          "• /quy - Xem quỹ người ký gửi\n" +
-          "• /huy - Hủy đơn đang nhập\n" +
-          "• /testauth - Kiểm tra Supabase\n" +
-          "• /id - Xem Telegram Chat ID",
-      );
-    } else if (/^\/id(?:@\w+)?$/i.test(text)) {
-      await telegramSend(chatId, `🆔 <b>Chat ID:</b>\n<code>${chatId}</code>`);
-    } else if (/^\/testauth(?:@\w+)?$/i.test(text)) {
-      await getAdminSupabase();
-      await telegramSend(
-        chatId,
-        "✅ <b>Supabase Auth OK</b>\n\nLumii Sales Hub đã đăng nhập được tài khoản admin.",
-      );
-    } else if (/^\/quy(?:@\w+)?$/i.test(text)) {
-      await sendAgencyFunds(chatId);
-    } else if (/^\/donmau(?:@\w+)?$/i.test(text)) {
-      await telegramSend(
-        chatId,
-        "🧾 Luồng nhập đơn đã chuyển sang Mini App. Bà gõ /don rồi bấm nút <b>MỞ FORM NHẬP ĐƠN</b> nha.",
-      );
-    } else if (/^\/don(?:@\w+)?$/i.test(text)) {
-      await startOrderDraft(chatId);
-    } else if (/^\/huy(?:@\w+)?$/i.test(text)) {
-      await deleteOrderDraft(chatId);
-      await telegramSend(chatId, "❌ <b>Đã hủy đơn đang nhập.</b>");
-    } else {
-      const draft = await getOrderDraft(chatId);
-      if (draft && ["await_form", "preview"].includes(String(draft.step || ""))) {
-        await telegramSend(chatId, "🧾 Bà đang có một đơn nhập dở. Mở lại form bằng nút dưới nha:");
-        await sendMiniAppButton(chatId, draft.data || {}, draftTokenOf(draft));
+      const partnerFin = document.getElementById("partnerFinancials");
+      if (isAgency) {
+        partnerFin.style.display = "contents";
+        document.getElementById("pPartnerBal").textContent = formatMoney(p.partnerBalance);
+        document.getElementById("pFundUsed").textContent = formatMoney(p.agencyFundUsed);
+        document.getElementById("pPartnerProfit").textContent = formatMoney(p.partnerProfitAmount);
+        document.getElementById("pPartnerPayout").textContent = formatMoney(p.partnerPayoutAmount);
+        document.getElementById("pLumiiAdvance").textContent = formatMoney(p.lumiiAdvanceAmount);
       } else {
-        await telegramSend(chatId, "👑 Gõ /don để tạo đơn mới hoặc /quy để xem quỹ.");
+        partnerFin.style.display = "none";
       }
+
+      previewCard.style.display = "block";
+      btnSave.style.display = "flex";
     }
 
-    return Response.json({ ok: true });
-  } catch (error: any) {
-    console.error("Lumii Sales Hub error:", error);
-
-    if (chatId) {
+    async function init() {
       try {
-        await telegramSend(
-          chatId,
-          `❌ <b>Lỗi xử lý:</b>\n<code>${escapeHtml(error?.message || error)}</code>`,
-        );
-      } catch (telegramError) {
-        console.error("Không gửi được lỗi về Telegram:", telegramError);
+        if (tg) {
+          tg.ready();
+          tg.expand();
+        }
+
+        const data = await callApi("bootstrap");
+        if (data.saved) {
+          loadingEl.style.display = "none";
+          savedViewEl.style.display = "block";
+          return;
+        }
+
+        currentOrderType = data.orderType;
+        document.getElementById("orderTypeBadge").textContent = data.orderTypeLabel || "Đơn hàng";
+        
+        if (data.isEdit) {
+          document.getElementById("formHeading").textContent = "Sửa đơn hàng";
+        }
+
+        if (data.partner) {
+          document.getElementById("partnerBox").style.display = "block";
+          document.getElementById("partnerName").textContent = `🤝 ${data.partner.name}`;
+          document.getElementById("partnerMeta").textContent = `Quỹ khả dụng: ${formatMoney(data.partner.currentFundBalance)} · Chia lời ${data.partner.defaultProfitRate}%`;
+          document.getElementById("pPartnerRateLabel").textContent = `Lời người ký gửi ${data.partner.defaultProfitRate}%`;
+        }
+
+        fillForm(data.form);
+
+        loadingEl.style.display = "none";
+        formEl.style.display = "block";
+      } catch (err) {
+        loadingEl.innerHTML = `<div style="color:#ef4444;padding:20px;text-align:center;">${err.message}</div>`;
       }
     }
 
-    return Response.json({ ok: false });
-  }
-});
+    btnPreview.addEventListener("click", async () => {
+      try {
+        btnPreview.disabled = true;
+        btnPreview.textContent = "Đang tính toán...";
+        const formData = getFormData();
+        const res = await callApi("preview", { form: formData });
+        renderPreview(res.preview, currentOrderType === "agency_consignment");
+        showToast("Đã cập nhật bảng tính!", "success");
+      } catch (err) {
+        showToast(err.message, "error");
+      } finally {
+        btnPreview.disabled = false;
+        btnPreview.textContent = "XEM TRƯỚC";
+      }
+    });
+
+    btnSave.addEventListener("click", async () => {
+      try {
+        btnSave.disabled = true;
+        btnSave.textContent = "Đang lưu vào sổ...";
+        await callApi("save");
+        formEl.style.display = "none";
+        savedViewEl.style.display = "block";
+        if (tg) {
+          setTimeout(() => tg.close(), 1200);
+        }
+      } catch (err) {
+        showToast(err.message, "error");
+        btnSave.disabled = false;
+        btnSave.textContent = "✅ LƯU ĐƠN";
+      }
+    });
+
+    init();
+  </script>
+</body>
+</html>
