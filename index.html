@@ -1,388 +1,752 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="vi">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Lumii Sales Hub</title>
-  <script src="https://telegram.org/js/telegram-web-app.js?63"></script>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <style>
     :root {
-      --bg: var(--tg-theme-bg-color, #07111f);
-      --card: var(--tg-theme-secondary-bg-color, #0d1b2d);
-      --text: var(--tg-theme-text-color, #f5f8ff);
-      --muted: var(--tg-theme-hint-color, #8fa3bd);
-      --link: var(--tg-theme-link-color, #5aa9ff);
-      --button: var(--tg-theme-button-color, #1788fb);
-      --button-text: var(--tg-theme-button-text-color, #ffffff);
-      --line: color-mix(in srgb, var(--muted) 24%, transparent);
-      --good: #42d392;
-      --warn: #ffbf47;
-      --bad: #ff6b7a;
-      --shadow: 0 14px 40px rgba(0, 0, 0, .2);
+      --bg-color: #0b1320;
+      --card-bg: #132238;
+      --input-bg: #1c2e4a;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --primary: #38bdf8;
+      --primary-hover: #0284c7;
+      --success: #10b981;
+      --success-hover: #059669;
+      --danger: #ef4444;
+      --border: #233857;
     }
-    * { box-sizing: border-box; }
-    html { background: var(--bg); }
-    body {
+
+    * {
+      box-sizing: border-box;
       margin: 0;
-      min-height: 100vh;
-      background:
-        radial-gradient(circle at 15% -10%, rgba(23, 136, 251, .22), transparent 36%),
-        radial-gradient(circle at 100% 18%, rgba(66, 211, 146, .10), transparent 28%),
-        var(--bg);
-      color: var(--text);
-      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      padding: 18px 14px calc(28px + env(safe-area-inset-bottom));
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      -webkit-tap-highlight-color: transparent;
     }
-    button, input, select, textarea { font: inherit; }
-    .shell { width: min(100%, 720px); margin: 0 auto; }
-    .hero { padding: 4px 2px 16px; }
-    .eyebrow { color: var(--link); font-size: 12px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
-    h1 { margin: 5px 0 4px; font-size: 25px; line-height: 1.15; }
-    .subtitle { margin: 0; color: var(--muted); font-size: 14px; }
-    .type-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
-    .badge { display: inline-flex; align-items: center; min-height: 30px; padding: 6px 10px; border: 1px solid rgba(90, 169, 255, .32); border-radius: 999px; background: rgba(23, 136, 251, .12); color: var(--link); font-size: 13px; font-weight: 750; }
-    .partner { display: none; margin-top: 12px; padding: 12px 13px; border: 1px solid rgba(151, 113, 255, .35); border-radius: 14px; background: rgba(151, 113, 255, .10); }
-    .partner strong { display: block; margin-bottom: 3px; }
-    .partner span { color: var(--muted); font-size: 13px; }
-    .loading { margin: 18px 0; padding: 16px; border: 1px solid var(--line); border-radius: 16px; background: var(--card); color: var(--muted); text-align: center; }
-    .spinner { width: 22px; height: 22px; margin: 0 auto 9px; border: 3px solid rgba(90, 169, 255, .18); border-top-color: var(--link); border-radius: 50%; animation: spin .8s linear infinite; }
-    @keyframes spin { to { transform: rotate(360deg); } }
-    .card { margin-bottom: 12px; padding: 15px; border: 1px solid var(--line); border-radius: 18px; background: color-mix(in srgb, var(--card) 94%, transparent); box-shadow: var(--shadow); }
-    .card h2 { margin: 0 0 13px; font-size: 16px; }
-    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-    .wide { grid-column: 1 / -1; }
-    label { display: block; color: var(--muted); font-size: 12px; font-weight: 700; }
-    label b { color: var(--bad); }
+
+    body {
+      background-color: var(--bg-color);
+      color: var(--text-main);
+      padding: 16px;
+      padding-bottom: 40px;
+    }
+
+    .header {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+
+    .badge-lumii {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      color: var(--primary);
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+
+    .title {
+      font-size: 20px;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+
+    .subtitle {
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    .badge-type {
+      display: inline-block;
+      margin-top: 10px;
+      padding: 4px 12px;
+      border-radius: 9999px;
+      background: rgba(56, 189, 248, 0.15);
+      color: var(--primary);
+      font-size: 12px;
+      font-weight: 600;
+      border: 1px solid rgba(56, 189, 248, 0.3);
+    }
+
+    .partner-card {
+      background: rgba(245, 158, 11, 0.1);
+      border: 1px solid rgba(245, 158, 11, 0.3);
+      padding: 12px;
+      border-radius: 12px;
+      margin-bottom: 16px;
+      display: none;
+    }
+
+    .partner-name {
+      font-size: 14px;
+      font-weight: 600;
+      color: #fbbf24;
+    }
+
+    .partner-meta {
+      font-size: 12px;
+      color: #fde68a;
+      margin-top: 2px;
+    }
+
+    .section-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--primary);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin: 16px 0 8px;
+    }
+
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 14px;
+      margin-bottom: 12px;
+    }
+
+    .form-group {
+      margin-bottom: 12px;
+    }
+
+    .form-group:last-child {
+      margin-bottom: 0;
+    }
+
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    label {
+      display: block;
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-bottom: 4px;
+      font-weight: 500;
+    }
+
     input, select, textarea {
-      width: 100%; margin-top: 6px; border: 1px solid var(--line); border-radius: 12px; outline: none;
-      background: color-mix(in srgb, var(--bg) 78%, var(--card)); color: var(--text); padding: 12px;
-      transition: border-color .18s ease, box-shadow .18s ease;
+      width: 100%;
+      background: var(--input-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 12px;
+      color: var(--text-main);
+      font-size: 14px;
+      outline: none;
+      transition: border-color 0.2s;
     }
-    input:focus, select:focus, textarea:focus { border-color: var(--link); box-shadow: 0 0 0 3px rgba(90, 169, 255, .13); }
-    input::placeholder, textarea::placeholder { color: color-mix(in srgb, var(--muted) 72%, transparent); }
-    textarea { min-height: 88px; resize: vertical; }
-    .money-wrap { position: relative; }
-    .money-wrap input { padding-right: 34px; text-align: right; font-weight: 750; }
-    .money-wrap::after { content: "đ"; position: absolute; right: 12px; bottom: 12px; color: var(--muted); font-size: 13px; }
-    .actions { position: sticky; bottom: 0; z-index: 4; display: grid; gap: 9px; padding: 12px 0 calc(4px + env(safe-area-inset-bottom)); background: linear-gradient(transparent, var(--bg) 22%); }
-    .btn { min-height: 49px; border: 0; border-radius: 14px; padding: 12px 16px; cursor: pointer; font-weight: 850; transition: transform .12s ease, opacity .12s ease; }
-    .btn:active { transform: scale(.985); }
-    .btn:disabled { cursor: wait; opacity: .58; }
-    .btn-preview { background: var(--button); color: var(--button-text); box-shadow: 0 10px 26px rgba(23, 136, 251, .28); }
-    .btn-save { display: none; background: linear-gradient(135deg, #21c784, #49e5a5); color: #03150e; box-shadow: 0 10px 26px rgba(66, 211, 146, .24); }
-    .preview { display: none; border-color: rgba(66, 211, 146, .32); }
-    .preview-head { display: flex; justify-content: space-between; gap: 12px; align-items: center; margin-bottom: 12px; }
-    .preview-head h2 { margin: 0; }
-    .preview-head span { color: var(--good); font-size: 12px; font-weight: 800; }
-    .metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
-    .metric { min-width: 0; padding: 11px; border-radius: 13px; background: color-mix(in srgb, var(--bg) 75%, var(--card)); }
-    .metric small { display: block; min-height: 31px; color: var(--muted); font-size: 11px; line-height: 1.35; }
-    .metric strong { display: block; margin-top: 4px; overflow-wrap: anywhere; font-size: 15px; }
-    .metric.final { grid-column: 1 / -1; border: 1px solid rgba(66, 211, 146, .35); background: rgba(66, 211, 146, .10); }
-    .metric.final small { min-height: 0; color: var(--good); }
-    .metric.final strong { color: var(--good); font-size: 22px; }
-    .negative { color: var(--bad) !important; }
-    .toast { display: none; margin: 0 0 12px; padding: 12px 13px; border-radius: 13px; font-size: 13px; line-height: 1.45; }
-    .toast.error { display: block; border: 1px solid rgba(255, 107, 122, .35); background: rgba(255, 107, 122, .11); color: #ff9da7; }
-    .toast.info { display: block; border: 1px solid rgba(90, 169, 255, .32); background: rgba(90, 169, 255, .10); color: var(--link); }
-    .success { display: none; padding: 24px 16px; text-align: center; }
-    .success-icon { width: 58px; height: 58px; display: grid; place-items: center; margin: 0 auto 12px; border-radius: 50%; background: rgba(66, 211, 146, .14); color: var(--good); font-size: 29px; }
-    .success h2 { margin: 0 0 7px; font-size: 21px; }
-    .success p { margin: 0; color: var(--muted); }
-    .success code { display: inline-block; margin-top: 10px; color: var(--good); font-size: 16px; font-weight: 800; }
-    @media (max-width: 520px) {
-      body { padding-left: 11px; padding-right: 11px; }
-      .grid { grid-template-columns: 1fr; }
-      .wide { grid-column: auto; }
-      .card { padding: 14px 12px; border-radius: 16px; }
+
+    input:focus, select:focus, textarea:focus {
+      border-color: var(--primary);
+    }
+
+    textarea {
+      resize: vertical;
+      min-height: 60px;
+    }
+
+    .grid-preview {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .preview-box {
+      background: var(--input-bg);
+      border: 1px solid var(--border);
+      padding: 10px;
+      border-radius: 10px;
+    }
+
+    .preview-box-full {
+      grid-column: span 2;
+    }
+
+    .preview-label {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-bottom: 2px;
+    }
+
+    .preview-val {
+      font-size: 15px;
+      font-weight: 700;
+      color: #fff;
+    }
+
+    .box-profit {
+      background: rgba(16, 185, 129, 0.15);
+      border-color: rgba(16, 185, 129, 0.4);
+    }
+
+    .box-profit .preview-val {
+      color: #34d399;
+      font-size: 18px;
+    }
+
+    .btn {
+      width: 100%;
+      padding: 14px;
+      border-radius: 10px;
+      font-size: 15px;
+      font-weight: 700;
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      margin-top: 10px;
+      transition: all 0.2s;
+    }
+
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .btn-preview {
+      background: var(--primary);
+      color: #0f172a;
+    }
+
+    .btn-preview:not(:disabled):hover {
+      background: var(--primary-hover);
+    }
+
+    .btn-save {
+      background: var(--success);
+      color: #fff;
+      display: none;
+    }
+
+    .btn-save:not(:disabled):hover {
+      background: var(--success-hover);
+    }
+
+    .toast {
+      position: fixed;
+      top: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 10px 16px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 500;
+      z-index: 1000;
+      display: none;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      text-align: center;
+      max-width: 90%;
+    }
+
+    .toast-error {
+      background: var(--danger);
+      color: #fff;
+    }
+
+    .toast-success {
+      background: var(--success);
+      color: #fff;
+    }
+
+    .loading-screen {
+      position: fixed;
+      inset: 0;
+      background: var(--bg-color);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 50;
+      gap: 12px;
+      color: var(--text-muted);
+      font-size: 14px;
+    }
+
+    .spinner {
+      width: 32px;
+      height: 32px;
+      border: 3px solid var(--border);
+      border-top-color: var(--primary);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .saved-view {
+      display: none;
+      text-align: center;
+      padding: 40px 16px;
+    }
+
+    .saved-icon {
+      font-size: 48px;
+      margin-bottom: 16px;
     }
   </style>
 </head>
 <body>
-  <main class="shell">
-    <header class="hero">
-      <div class="eyebrow">Lumii SmartHome</div>
-      <h1>Nhập đơn bán hàng</h1>
-      <p class="subtitle">Điền một lần, xem lợi nhuận rồi lưu thẳng vào sổ Lumii.</p>
-      <div class="type-row"><span id="orderTypeBadge" class="badge">Đang tải loại đơn…</span></div>
-      <div id="partnerBox" class="partner"><strong id="partnerName"></strong><span id="partnerMeta"></span></div>
-    </header>
 
-    <div id="loading" class="loading"><div class="spinner"></div>Đang xác thực Telegram và mở bản nháp…</div>
-    <div id="toast" class="toast"></div>
+  <div id="loading" class="loading-screen">
+    <div class="spinner"></div>
+    <div>Đang tải dữ liệu đơn...</div>
+  </div>
 
-    <section id="success" class="card success">
-      <div class="success-icon">✓</div>
-      <h2>Đã lưu đơn vào sổ Lumii</h2>
-      <p>Bot cũng đã gửi xác nhận về cuộc trò chuyện.</p>
-      <code id="savedOrderCode">Đã tạo</code>
-    </section>
+  <div id="toast" class="toast"></div>
 
-    <form id="orderForm" hidden novalidate>
-      <section class="card">
-        <h2>Thông tin đơn</h2>
-        <div class="grid">
-          <label>Ngày bán <b>*</b><input id="saleDate" name="saleDate" type="date" required></label>
-          <label>Nguồn đơn
-            <select id="sourceChannel" name="sourceChannel">
-              <option value="facebook">Facebook</option><option value="zalo">Zalo</option>
-              <option value="tiktok">TikTok</option><option value="shopee">Shopee</option>
-              <option value="returning_customer">Khách quen</option><option value="phone">Điện thoại</option>
-              <option value="telegram">Telegram</option><option value="manual">Nguồn khác</option>
-            </select>
-          </label>
+  <div id="savedView" class="saved-view">
+    <div class="saved-icon">✅</div>
+    <h2 style="margin-bottom: 8px;">Đã lưu đơn thành công!</h2>
+    <p style="color: var(--text-muted); font-size: 14px; margin-bottom: 24px;">Thông tin đã được ghi vào sổ Lumii.</p>
+    <button class="btn btn-preview" onclick="tg.close()">Đóng cửa sổ</button>
+  </div>
+
+  <form id="orderForm" style="display: none;">
+    <div class="header">
+      <div class="badge-lumii">LUMII SMARTHOME</div>
+      <div id="formHeading" class="title">Nhập đơn bán hàng</div>
+      <div class="subtitle">Điền một lần, xem lợi nhuận rồi lưu thẳng vào sổ Lumii.</div>
+      <div id="orderTypeBadge" class="badge-type">Đang tải...</div>
+    </div>
+
+    <div id="partnerBox" class="partner-card">
+      <div id="partnerName" class="partner-name">🤝 Người ký gửi</div>
+      <div id="partnerMeta" class="partner-meta">Quỹ khả dụng: 0đ</div>
+    </div>
+
+    <div class="section-title">1. Thông tin khách & nguồn</div>
+    <div class="card">
+      <div class="form-row">
+        <div class="form-group">
+          <label>Ngày bán</label>
+          <input type="date" id="saleDate" required>
         </div>
-      </section>
-
-      <section class="card">
-        <h2>Khách hàng</h2>
-        <div class="grid">
-          <label>Tên khách <b>*</b><input id="customerName" name="customerName" maxlength="120" autocomplete="name" required placeholder="Tên khách hàng"></label>
-          <label>Số điện thoại <b>*</b><input id="customerPhone" name="customerPhone" maxlength="30" inputmode="tel" autocomplete="tel" required placeholder="09xx xxx xxx"></label>
-          <label class="wide">Địa chỉ<input id="customerAddress" name="customerAddress" maxlength="500" autocomplete="street-address" placeholder="Địa chỉ giao hàng"></label>
+        <div class="form-group">
+          <label>Nguồn khách</label>
+          <select id="sourceChannel">
+            <option value="facebook">Facebook</option>
+            <option value="zalo">Zalo</option>
+            <option value="tiktok">TikTok</option>
+            <option value="shopee">Shopee</option>
+            <option value="returning_customer">Khách quen</option>
+            <option value="phone">Điện thoại</option>
+            <option value="telegram">Telegram</option>
+            <option value="manual">Nguồn khác</option>
+          </select>
         </div>
-      </section>
-
-      <section class="card">
-        <h2>Sản phẩm</h2>
-        <div class="grid">
-          <label class="wide">Sản phẩm <b>*</b><input id="productName" name="productName" maxlength="200" required placeholder="VD: Dreame T30C"></label>
-          <label>Màu<input id="color" name="color" maxlength="80" placeholder="Trắng / Đen"></label>
-          <label>Số lượng<input id="quantity" name="quantity" type="number" min="1" max="100" step="1" value="1" inputmode="numeric"></label>
-          <label class="wide">Serial<input id="serialNumber" name="serialNumber" maxlength="120" placeholder="Serial máy nếu có"></label>
-        </div>
-      </section>
-
-      <section class="card">
-        <h2>Giá bán và chi phí</h2>
-        <div class="grid">
-          <label>Giá bán <b>*</b><span class="money-wrap"><input id="salePrice" name="salePrice" inputmode="numeric" required placeholder="0"></span></label>
-          <label>Giá vốn<span class="money-wrap"><input id="costPrice" name="costPrice" inputmode="numeric" placeholder="0"></span></label>
-          <label>Ship về<span class="money-wrap"><input id="inboundShippingFee" name="inboundShippingFee" inputmode="numeric" placeholder="0"></span></label>
-          <label>Sửa / Vệ sinh<span class="money-wrap"><input id="repairCost" name="repairCost" inputmode="numeric" placeholder="0"></span></label>
-          <label>Giao khách<span class="money-wrap"><input id="outboundShippingFee" name="outboundShippingFee" inputmode="numeric" placeholder="0"></span></label>
-          <label>Chi phí khác<span class="money-wrap"><input id="otherCost" name="otherCost" inputmode="numeric" placeholder="0"></span></label>
-          <label>Tip<span class="money-wrap"><input id="tipAmount" name="tipAmount" inputmode="numeric" placeholder="0"></span></label>
-        </div>
-      </section>
-
-      <section class="card">
-        <h2>Thanh toán và vận chuyển</h2>
-        <div class="grid">
-          <label>Thanh toán
-            <select id="paymentMethod" name="paymentMethod"><option value="bank_transfer">Chuyển khoản</option><option value="cod">COD</option><option value="cash">Tiền mặt</option></select>
-          </label>
-          <label>Trạng thái tiền
-            <select id="paymentStatus" name="paymentStatus"><option value="paid">Đã nhận</option><option value="unpaid">Chưa nhận</option><option value="pending">Chờ kiểm tra</option><option value="partially_paid">Nhận một phần</option><option value="refunded">Đã hoàn tiền</option></select>
-          </label>
-          <label>Vận chuyển
-            <select id="shippingProvider" name="shippingProvider"><option value="self_delivery">Tự giao</option><option value="customer_pickup">Khách đến lấy</option><option value="viettel_post">Viettel Post</option><option value="other">Khác</option></select>
-          </label>
-          <label>Trạng thái giao
-            <select id="shippingStatus" name="shippingStatus"><option value="delivered">Đã giao</option><option value="pending">Chưa tạo vận đơn</option><option value="created">Đã tạo vận đơn</option><option value="picking">Đang lấy hàng</option><option value="shipping">Đang giao</option><option value="failed">Giao thất bại</option><option value="returned">Hoàn hàng</option><option value="cancelled">Đã hủy</option></select>
-          </label>
-          <label>Đơn vị / Dịch vụ giao<input id="shippingService" name="shippingService" maxlength="120" placeholder="VD: Viettel Post"></label>
-          <label>Mã vận đơn<input id="trackingCode" name="trackingCode" maxlength="120" placeholder="Mã vận đơn nếu có"></label>
-          <label class="wide">Ghi chú<textarea id="note" name="note" maxlength="2000" placeholder="Ghi chú nội bộ cho đơn"></textarea></label>
-        </div>
-      </section>
-
-      <section id="previewCard" class="card preview">
-        <div class="preview-head"><h2>Kiểm tra trước khi lưu</h2><span>ĐÃ TÍNH LẠI</span></div>
-        <div id="metrics" class="metrics"></div>
-      </section>
-
-      <div class="actions">
-        <button id="previewButton" class="btn btn-preview" type="submit">XEM TRƯỚC</button>
-        <button id="saveButton" class="btn btn-save" type="button">✅ LƯU ĐƠN</button>
       </div>
-    </form>
-  </main>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Tên khách *</label>
+          <input type="text" id="customerName" placeholder="Ví dụ: Anh Nam" required>
+        </div>
+        <div class="form-group">
+          <label>Số điện thoại *</label>
+          <input type="text" id="customerPhone" placeholder="090..." required>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Địa chỉ nhận hàng</label>
+        <input type="text" id="customerAddress" placeholder="Số nhà, đường, quận/huyện...">
+      </div>
+    </div>
+
+    <div class="section-title">2. Sản phẩm & Doanh thu</div>
+    <div class="card">
+      <div class="form-group">
+        <label>Tên sản phẩm *</label>
+        <input type="text" id="productName" placeholder="Ví dụ: Lumii V9 Max" required>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Màu sắc</label>
+          <input type="text" id="color" placeholder="Trắng / Đen">
+        </div>
+        <div class="form-group">
+          <label>Số lượng</label>
+          <input type="number" id="quantity" value="1" min="1" required>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Số Serial / IMEI</label>
+        <input type="text" id="serialNumber" placeholder="Nhập nếu có">
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Giá bán (1 máy) *</label>
+          <input type="text" id="salePrice" placeholder="Ví dụ: 6.000.000" required>
+        </div>
+        <div class="form-group">
+          <label>Giá vốn (1 máy)</label>
+          <input type="text" id="costPrice" placeholder="Ví dụ: 4.000.000">
+        </div>
+      </div>
+    </div>
+
+    <div class="section-title">3. Chi phí phát sinh & Phụ phí</div>
+    <div class="card">
+      <div class="form-row">
+        <div class="form-group">
+          <label>Ship nhập hàng</label>
+          <input type="text" id="inboundShippingFee" placeholder="0">
+        </div>
+        <div class="form-group">
+          <label>Chi phí sửa / dọn</label>
+          <input type="text" id="repairCost" placeholder="0">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Ship giao cho khách</label>
+          <input type="text" id="outboundShippingFee" placeholder="0">
+        </div>
+        <div class="form-group">
+          <label>Chi phí khác</label>
+          <input type="text" id="otherCost" placeholder="0">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Tiền Tip / Phụ thu thêm</label>
+        <input type="text" id="tipAmount" placeholder="0">
+      </div>
+    </div>
+
+    <div class="section-title">4. Vận chuyển & Thanh toán</div>
+    <div class="card">
+      <div class="form-row">
+        <div class="form-group">
+          <label>Hình thức ship</label>
+          <select id="shippingProvider">
+            <option value="self_delivery">Tự giao</option>
+            <option value="customer_pickup">Khách đến lấy</option>
+            <option value="viettel_post">Viettel Post</option>
+            <option value="other">Khác</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Trạng thái giao</label>
+          <select id="shippingStatus">
+            <option value="delivered">Đã giao</option>
+            <option value="shipping">Đang giao</option>
+            <option value="picking">Đang lấy hàng</option>
+            <option value="created">Đã tạo đơn</option>
+            <option value="pending">Chưa tạo vận đơn</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Thanh toán</label>
+          <select id="paymentMethod">
+            <option value="bank_transfer">Chuyển khoản</option>
+            <option value="cod">COD</option>
+            <option value="cash">Tiền mặt</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Trạng thái tiền</label>
+          <select id="paymentStatus">
+            <option value="paid">Đã nhận</option>
+            <option value="unpaid">Chưa nhận</option>
+            <option value="partially_paid">Một phần</option>
+            <option value="pending">Chờ kiểm tra</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Mã vận đơn</label>
+          <input type="text" id="trackingCode" placeholder="Mã theo dõi...">
+        </div>
+        <div class="form-group">
+          <label>Dịch vụ ship</label>
+          <input type="text" id="shippingService" placeholder="Nhanh, Tiết kiệm...">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Ghi chú nội bộ</label>
+        <textarea id="note" placeholder="Thông tin bảo hành, lưu ý..."></textarea>
+      </div>
+    </div>
+
+    <!-- KHUNG TÍNH TOÁN XEM TRƯỚC -->
+    <div id="previewCard" style="display: none;">
+      <div class="section-title">5. Bảng tính dòng tiền & Lợi nhuận</div>
+      <div class="card">
+        <div class="grid-preview">
+          <div class="preview-box">
+            <div class="preview-label">Tổng tiền hàng</div>
+            <div id="pSaleTotal" class="preview-val">0đ</div>
+          </div>
+          <div class="preview-box">
+            <div class="preview-label">Tổng chi phí</div>
+            <div id="pCostTotal" class="preview-val">0đ</div>
+          </div>
+          <div class="preview-box">
+            <div class="preview-label">Lãi giao dịch</div>
+            <div id="pTxProfit" class="preview-val">0đ</div>
+          </div>
+          <div class="preview-box">
+            <div class="preview-label">Tổng khách trả</div>
+            <div id="pCustPaid" class="preview-val">0đ</div>
+          </div>
+
+          <div id="partnerFinancials" style="display: contents;">
+            <div class="preview-box">
+              <div class="preview-label">Quỹ hiện có</div>
+              <div id="pPartnerBal" class="preview-val">0đ</div>
+            </div>
+            <div class="preview-box">
+              <div class="preview-label">Vốn quỹ dùng</div>
+              <div id="pFundUsed" class="preview-val">0đ</div>
+            </div>
+            <div class="preview-box">
+              <div id="pPartnerRateLabel" class="preview-label">Lời người ký gửi</div>
+              <div id="pPartnerProfit" class="preview-val">0đ</div>
+            </div>
+            <div class="preview-box">
+              <div class="preview-label">Tổng trả người ký gửi</div>
+              <div id="pPartnerPayout" class="preview-val">0đ</div>
+            </div>
+            <div class="preview-box preview-box-full">
+              <div class="preview-label">Lumii ứng chi phí</div>
+              <div id="pLumiiAdvance" class="preview-val">0đ</div>
+            </div>
+          </div>
+
+          <div class="preview-box preview-box-full box-profit">
+            <div class="preview-label" style="color: #34d399;">LỢI NHUẬN CUỐI LUMII</div>
+            <div id="pLumiiProfit" class="preview-val">0đ</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <button type="button" id="btnPreview" class="btn btn-preview">XEM TRƯỚC</button>
+    <button type="button" id="btnSave" class="btn btn-save">✅ LƯU ĐƠN</button>
+  </form>
 
   <script>
-    (function () {
-      "use strict";
-      var tg = window.Telegram && window.Telegram.WebApp;
-      var urlParams = new URLSearchParams(window.location.search);
-      var draftToken = urlParams.get("draft") || "";
-      
-      // Lấy endpoint API Supabase truyền vào từ URL query param: ?api=https://xxx.supabase.co/functions/v1/lumii-sales-hub/miniapp/api
-      var apiBase = urlParams.get("api") || "";
+    const tg = window.Telegram?.WebApp;
+    const urlParams = new URLSearchParams(window.location.search);
+    const draftToken = urlParams.get("draft") || "";
+    const apiEndpoint = urlParams.get("api") || "";
 
-      var form = document.getElementById("orderForm");
-      var loading = document.getElementById("loading");
-      var toast = document.getElementById("toast");
-      var previewCard = document.getElementById("previewCard");
-      var metrics = document.getElementById("metrics");
-      var previewButton = document.getElementById("previewButton");
-      var saveButton = document.getElementById("saveButton");
-      var state = { busy: false, previewReady: false };
-      var moneyFields = ["salePrice", "costPrice", "inboundShippingFee", "repairCost", "outboundShippingFee", "otherCost", "tipAmount"];
-      var fieldNames = ["saleDate", "sourceChannel", "customerName", "customerPhone", "customerAddress", "productName", "color", "quantity", "serialNumber", "salePrice", "costPrice", "inboundShippingFee", "repairCost", "outboundShippingFee", "otherCost", "tipAmount", "paymentMethod", "paymentStatus", "shippingProvider", "shippingService", "trackingCode", "shippingStatus", "note"];
+    const loadingEl = document.getElementById("loading");
+    const formEl = document.getElementById("orderForm");
+    const savedViewEl = document.getElementById("savedView");
+    const toastEl = document.getElementById("toast");
+    const btnPreview = document.getElementById("btnPreview");
+    const btnSave = document.getElementById("btnSave");
+    const previewCard = document.getElementById("previewCard");
 
-      function byId(id) { return document.getElementById(id); }
-      function initData() { return tg ? String(tg.initData || "") : ""; }
-      function money(value) { return new Intl.NumberFormat("vi-VN").format(Number(value || 0)) + "đ"; }
-      function rawMoney(value) { var digits = String(value == null ? "" : value).replace(/[^0-9-]/g, ""); return Number(digits || 0); }
-      function formatMoneyInput(element) { var value = rawMoney(element.value); element.value = value ? new Intl.NumberFormat("vi-VN").format(value) : ""; }
-      function showToast(message, kind) { toast.textContent = message || ""; toast.className = message ? "toast " + (kind || "error") : "toast"; }
-      function vibrate(kind) { try { if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred(kind); } catch (_) {} }
-      function setBusy(busy, label) {
-        state.busy = busy;
-        previewButton.disabled = busy;
-        saveButton.disabled = busy;
-        previewButton.textContent = busy ? (label || "ĐANG XỬ LÝ…") : "XEM TRƯỚC";
-      }
-      async function api(action, payload) {
-        var response = await fetch(apiBase + "/" + action, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          cache: "no-store",
-          body: JSON.stringify(Object.assign({ initData: initData(), draftToken: draftToken }, payload || {}))
-        });
-        var data = {};
-        try { data = await response.json(); } catch (_) {}
-        if (!response.ok || data.ok === false) throw new Error(data.error || "Không kết nối được với Lumii Sales Hub.");
-        return data;
-      }
-      function setFormData(data) {
-        fieldNames.forEach(function (name) {
-          var element = byId(name);
-          if (!element || data[name] == null) return;
-          element.value = String(data[name]);
-        });
-        moneyFields.forEach(function (name) { formatMoneyInput(byId(name)); });
-      }
-      function serializeForm() {
-        var output = {};
-        fieldNames.forEach(function (name) {
-          var element = byId(name);
-          output[name] = moneyFields.indexOf(name) >= 0 ? rawMoney(element.value) : element.value;
-        });
-        output.quantity = Number(output.quantity || 1);
-        return output;
-      }
-      function addMetric(label, value, options) {
-        var box = document.createElement("div");
-        box.className = "metric" + (options && options.final ? " final" : "");
-        var caption = document.createElement("small");
-        caption.textContent = label;
-        var amount = document.createElement("strong");
-        amount.textContent = money(value);
-        if (Number(value || 0) < 0) amount.className = "negative";
-        box.appendChild(caption);
-        box.appendChild(amount);
-        metrics.appendChild(box);
-      }
-      function renderPreview(data) {
-        var p = data.preview || {};
-        var o = data.order || {};
-        metrics.textContent = "";
-        addMetric("Tổng tiền hàng", p.saleTotal);
-        addMetric("Tổng chi phí", p.costTotal);
-        addMetric("Lãi giao dịch", p.transactionProfit);
-        addMetric("Tổng khách thanh toán", p.customerPaidTotal);
-        if (o.orderType === "agency_consignment") {
-          addMetric("Quỹ hiện có", p.partnerBalance);
-          addMetric("Vốn quỹ dùng", p.agencyFundUsed);
-          addMetric("Lời người ký gửi " + Number(o.partnerProfitRate || 0) + "%", p.partnerProfitAmount);
-          addMetric("Tổng trả người ký gửi", p.partnerPayoutAmount);
-          addMetric("Lumii ứng", p.lumiiAdvanceAmount);
-        }
-        addMetric("LỢI NHUẬN CUỐI LUMII", p.lumiiProfitAmount, { final: true });
-        previewCard.style.display = "block";
-        saveButton.style.display = "block";
-        state.previewReady = true;
-        previewCard.scrollIntoView({ behavior: "smooth", block: "start" });
-      }
-      function markDirty() {
-        if (!state.previewReady) return;
-        state.previewReady = false;
-        previewCard.style.display = "none";
-        saveButton.style.display = "none";
-        showToast("Bà vừa sửa thông tin. Bấm XEM TRƯỚC lại để tính số mới nha.", "info");
-      }
-      function showSaved(result) {
-        loading.style.display = "none";
-        form.hidden = true;
-        byId("success").style.display = "block";
-        byId("savedOrderCode").textContent = result && result.order_code ? result.order_code : "Đã tạo";
-        showToast("", "");
-        try { if (tg) tg.disableClosingConfirmation(); } catch (_) {}
-      }
-      function confirmSave() {
-        return new Promise(function (resolve) {
-          if (tg && tg.showConfirm) tg.showConfirm("Lưu đơn này vào sổ Lumii?", resolve);
-          else resolve(window.confirm("Lưu đơn này vào sổ Lumii?"));
-        });
-      }
+    let currentOrderType = "normal";
 
-      moneyFields.forEach(function (name) {
-        byId(name).addEventListener("input", function () { formatMoneyInput(this); });
+    function showToast(msg, type = "error") {
+      toastEl.textContent = msg;
+      toastEl.className = `toast toast-${type}`;
+      toastEl.style.display = "block";
+      setTimeout(() => { toastEl.style.display = "none"; }, 3000);
+    }
+
+    function formatMoney(num) {
+      return new Intl.NumberFormat("vi-VN").format(Number(num || 0)) + "đ";
+    }
+
+    function parseMoneyInput(val) {
+      const raw = String(val || "").trim().toLowerCase();
+      if (!raw) return 0;
+      const compact = raw.replace(/\s+/g, "").replace(/triệu/g, "tr").replace(/trieu/g, "tr");
+      let m = compact.match(/^(\d+)tr(\d+)$/);
+      if (m) return Math.round((Number(m[1]) + Number(`0.${m[2]}`)) * 1000000);
+      m = compact.match(/^(\d+(?:[.,]\d+)?)tr$/);
+      if (m) return Math.round(Number(m[1].replace(",", ".")) * 1000000);
+      m = compact.match(/^(\d+(?:[.,]\d+)?)(k|nghin|ngan)$/);
+      if (m) return Math.round(Number(m[1].replace(",", ".")) * 1000);
+      const parsed = Number(compact.replace(/[^0-9-]/g, ""));
+      return Number.isFinite(parsed) ? parsed : 0;
+    }
+
+    function getFormData() {
+      return {
+        saleDate: document.getElementById("saleDate").value,
+        sourceChannel: document.getElementById("sourceChannel").value,
+        customerName: document.getElementById("customerName").value,
+        customerPhone: document.getElementById("customerPhone").value,
+        customerAddress: document.getElementById("customerAddress").value,
+        productName: document.getElementById("productName").value,
+        color: document.getElementById("color").value,
+        quantity: document.getElementById("quantity").value,
+        serialNumber: document.getElementById("serialNumber").value,
+        salePrice: parseMoneyInput(document.getElementById("salePrice").value),
+        costPrice: parseMoneyInput(document.getElementById("costPrice").value),
+        inboundShippingFee: parseMoneyInput(document.getElementById("inboundShippingFee").value),
+        repairCost: parseMoneyInput(document.getElementById("repairCost").value),
+        outboundShippingFee: parseMoneyInput(document.getElementById("outboundShippingFee").value),
+        otherCost: parseMoneyInput(document.getElementById("otherCost").value),
+        tipAmount: parseMoneyInput(document.getElementById("tipAmount").value),
+        shippingProvider: document.getElementById("shippingProvider").value,
+        shippingStatus: document.getElementById("shippingStatus").value,
+        paymentMethod: document.getElementById("paymentMethod").value,
+        paymentStatus: document.getElementById("paymentStatus").value,
+        trackingCode: document.getElementById("trackingCode").value,
+        shippingService: document.getElementById("shippingService").value,
+        note: document.getElementById("note").value,
+      };
+    }
+
+    function fillForm(f) {
+      if (!f) return;
+      if (f.saleDate) document.getElementById("saleDate").value = f.saleDate;
+      if (f.sourceChannel) document.getElementById("sourceChannel").value = f.sourceChannel;
+      if (f.customerName) document.getElementById("customerName").value = f.customerName;
+      if (f.customerPhone) document.getElementById("customerPhone").value = f.customerPhone;
+      if (f.customerAddress) document.getElementById("customerAddress").value = f.customerAddress;
+      if (f.productName) document.getElementById("productName").value = f.productName;
+      if (f.color) document.getElementById("color").value = f.color;
+      if (f.quantity) document.getElementById("quantity").value = f.quantity;
+      if (f.serialNumber) document.getElementById("serialNumber").value = f.serialNumber;
+      if (f.salePrice) document.getElementById("salePrice").value = formatMoney(f.salePrice).replace("đ", "");
+      if (f.costPrice) document.getElementById("costPrice").value = formatMoney(f.costPrice).replace("đ", "");
+      if (f.inboundShippingFee) document.getElementById("inboundShippingFee").value = formatMoney(f.inboundShippingFee).replace("đ", "");
+      if (f.repairCost) document.getElementById("repairCost").value = formatMoney(f.repairCost).replace("đ", "");
+      if (f.outboundShippingFee) document.getElementById("outboundShippingFee").value = formatMoney(f.outboundShippingFee).replace("đ", "");
+      if (f.otherCost) document.getElementById("otherCost").value = formatMoney(f.otherCost).replace("đ", "");
+      if (f.tipAmount) document.getElementById("tipAmount").value = formatMoney(f.tipAmount).replace("đ", "");
+      if (f.shippingProvider) document.getElementById("shippingProvider").value = f.shippingProvider;
+      if (f.shippingStatus) document.getElementById("shippingStatus").value = f.shippingStatus;
+      if (f.paymentMethod) document.getElementById("paymentMethod").value = f.paymentMethod;
+      if (f.paymentStatus) document.getElementById("paymentStatus").value = f.paymentStatus;
+      if (f.trackingCode) document.getElementById("trackingCode").value = f.trackingCode;
+      if (f.shippingService) document.getElementById("shippingService").value = f.shippingService;
+      if (f.note) document.getElementById("note").value = f.note;
+    }
+
+    async function callApi(action, payload = {}) {
+      const url = `${apiEndpoint}/${action}`;
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          initData: tg?.initData || "",
+          draftToken: draftToken,
+          ...payload
+        })
       });
-      form.addEventListener("input", markDirty);
-      form.addEventListener("change", markDirty);
+      const data = await res.json();
+      if (!res.ok || data.ok === false) {
+        throw new Error(data.error || "Có lỗi xảy ra khi xử lý.");
+      }
+      return data;
+    }
 
-      form.addEventListener("submit", async function (event) {
-        event.preventDefault();
-        if (state.busy) return;
-        showToast("", "");
-        if (!form.checkValidity()) { form.reportValidity(); return; }
-        try {
-          setBusy(true, "ĐANG TÍNH…");
-          var data = await api("preview", { form: serializeForm() });
-          renderPreview(data);
-          vibrate("success");
-        } catch (error) {
-          showToast(error.message || String(error), "error");
-          vibrate("error");
-        } finally { setBusy(false); }
-      });
+    function renderPreview(p, isAgency) {
+      document.getElementById("pSaleTotal").textContent = formatMoney(p.saleTotal);
+      document.getElementById("pCostTotal").textContent = formatMoney(p.costTotal);
+      document.getElementById("pTxProfit").textContent = formatMoney(p.transactionProfit);
+      document.getElementById("pCustPaid").textContent = formatMoney(p.customerPaidTotal);
+      document.getElementById("pLumiiProfit").textContent = formatMoney(p.lumiiProfitAmount);
 
-      saveButton.addEventListener("click", async function () {
-        if (state.busy || !state.previewReady) return;
-        if (!(await confirmSave())) return;
-        try {
-          setBusy(true, "ĐANG LƯU…");
-          saveButton.textContent = "ĐANG LƯU ĐƠN…";
-          var data = await api("save");
-          showSaved(data.result || {});
-          vibrate("success");
-          window.setTimeout(function () { try { if (tg) tg.close(); } catch (_) {} }, 1400);
-        } catch (error) {
-          showToast(error.message || String(error), "error");
-          saveButton.textContent = "✅ LƯU ĐƠN";
-          vibrate("error");
-        } finally { setBusy(false); }
-      });
+      const partnerFin = document.getElementById("partnerFinancials");
+      if (isAgency) {
+        partnerFin.style.display = "contents";
+        document.getElementById("pPartnerBal").textContent = formatMoney(p.partnerBalance);
+        document.getElementById("pFundUsed").textContent = formatMoney(p.agencyFundUsed);
+        document.getElementById("pPartnerProfit").textContent = formatMoney(p.partnerProfitAmount);
+        document.getElementById("pPartnerPayout").textContent = formatMoney(p.partnerPayoutAmount);
+        document.getElementById("pLumiiAdvance").textContent = formatMoney(p.lumiiAdvanceAmount);
+      } else {
+        partnerFin.style.display = "none";
+      }
 
-      async function boot() {
-        try {
-          if (!tg || !initData()) throw new Error("Form này phải được mở bằng nút trong bot Telegram.");
-          if (!draftToken) throw new Error("Thiếu mã bản nháp. Bà quay lại bot và gõ /don nha.");
+      previewCard.style.display = "block";
+      btnSave.style.display = "flex";
+    }
+
+    async function init() {
+      try {
+        if (tg) {
           tg.ready();
           tg.expand();
-          tg.enableClosingConfirmation();
-          var data = await api("bootstrap");
-          if (data.saved) { showSaved(data.result || {}); return; }
-          byId("orderTypeBadge").textContent = data.orderTypeLabel || "Đơn bán hàng";
-          if (data.partner) {
-            byId("partnerBox").style.display = "block";
-            byId("partnerName").textContent = "🤝 " + data.partner.name;
-            byId("partnerMeta").textContent = "Quỹ khả dụng: " + money(data.partner.currentFundBalance) + " · Chia lời " + Number(data.partner.defaultProfitRate || 0) + "%";
-          }
-          setFormData(data.form || {});
-          loading.style.display = "none";
-          form.hidden = false;
-          previewButton.disabled = false;
-        } catch (error) {
-          loading.style.display = "none";
-          showToast(error.message || String(error), "error");
-          vibrate("error");
         }
+
+        const data = await callApi("bootstrap");
+        if (data.saved) {
+          loadingEl.style.display = "none";
+          savedViewEl.style.display = "block";
+          return;
+        }
+
+        currentOrderType = data.orderType;
+        document.getElementById("orderTypeBadge").textContent = data.orderTypeLabel || "Đơn hàng";
+        
+        if (data.isEdit) {
+          document.getElementById("formHeading").textContent = "Sửa đơn hàng";
+        }
+
+        if (data.partner) {
+          document.getElementById("partnerBox").style.display = "block";
+          document.getElementById("partnerName").textContent = `🤝 ${data.partner.name}`;
+          document.getElementById("partnerMeta").textContent = `Quỹ khả dụng: ${formatMoney(data.partner.currentFundBalance)} · Chia lời ${data.partner.defaultProfitRate}%`;
+          document.getElementById("pPartnerRateLabel").textContent = `Lời người ký gửi (${data.partner.defaultProfitRate}%)`;
+        }
+
+        fillForm(data.form);
+
+        loadingEl.style.display = "none";
+        formEl.style.display = "block";
+      } catch (err) {
+        loadingEl.innerHTML = `<div style="color:#ef4444;padding:20px;text-align:center;">${err.message}</div>`;
       }
-      boot();
-    })();
+    }
+
+    btnPreview.addEventListener("click", async () => {
+      try {
+        btnPreview.disabled = true;
+        btnPreview.textContent = "Đang tính toán...";
+        const formData = getFormData();
+        const res = await callApi("preview", { form: formData });
+        renderPreview(res.preview, currentOrderType === "agency_consignment");
+        showToast("Đã cập nhật bảng tính!", "success");
+      } catch (err) {
+        showToast(err.message, "error");
+      } finally {
+        btnPreview.disabled = false;
+        btnPreview.textContent = "XEM TRƯỚC";
+      }
+    });
+
+    btnSave.addEventListener("click", async () => {
+      try {
+        btnSave.disabled = true;
+        btnSave.textContent = "Đang lưu vào sổ...";
+        await callApi("save");
+        formEl.style.display = "none";
+        savedViewEl.style.display = "block";
+        if (tg) {
+          setTimeout(() => tg.close(), 1200);
+        }
+      } catch (err) {
+        showToast(err.message, "error");
+        btnSave.disabled = false;
+        btnSave.textContent = "✅ LƯU ĐƠN";
+      }
+    });
+
+    init();
   </script>
 </body>
 </html>
