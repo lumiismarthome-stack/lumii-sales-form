@@ -7,107 +7,114 @@
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <style>
     :root {
-      --bg-color: #0b1320;
-      --card-bg: #132238;
-      --input-bg: #1c2e4a;
-      --text-main: #f8fafc;
-      --text-muted: #94a3b8;
+      --bg: #070d19;
+      --card: rgba(15, 23, 42, 0.75);
+      --card-border: rgba(56, 189, 248, 0.18);
+      --input-bg: rgba(11, 20, 38, 0.85);
+      --input-border: rgba(51, 65, 85, 0.7);
       --primary: #38bdf8;
-      --primary-hover: #0284c7;
-      --success: #10b981;
-      --success-hover: #059669;
-      --danger: #ef4444;
-      --border: #233857;
+      --primary-gradient: linear-gradient(135deg, #38bdf8 0%, #0284c7 100%);
+      --success-gradient: linear-gradient(135deg, #10b981 0%, #059669 100%);
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --accent: #38bdf8;
     }
 
     * {
       box-sizing: border-box;
       margin: 0;
       padding: 0;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       -webkit-tap-highlight-color: transparent;
     }
 
     body {
-      background-color: var(--bg-color);
-      color: var(--text-main);
-      padding: 16px;
-      padding-bottom: 40px;
+      background-color: var(--bg);
+      background-image: 
+        radial-gradient(at 0% 0%, rgba(56, 189, 248, 0.12) 0px, transparent 50%),
+        radial-gradient(at 100% 100%, rgba(16, 185, 129, 0.08) 0px, transparent 50%);
+      color: var(--text);
+      padding: 18px 14px 40px;
+      min-height: 100vh;
     }
 
     .header {
       text-align: center;
-      margin-bottom: 20px;
+      margin-bottom: 22px;
     }
 
-    .badge-lumii {
+    .brand {
       font-size: 11px;
-      font-weight: 700;
-      letter-spacing: 1px;
-      color: var(--primary);
+      font-weight: 800;
+      letter-spacing: 1.5px;
+      color: #38bdf8;
       text-transform: uppercase;
-      margin-bottom: 4px;
+      margin-bottom: 6px;
     }
 
     .title {
-      font-size: 20px;
-      font-weight: 700;
+      font-size: 24px;
+      font-weight: 800;
+      color: #ffffff;
+      letter-spacing: -0.5px;
       margin-bottom: 4px;
     }
 
     .subtitle {
       font-size: 13px;
-      color: var(--text-muted);
+      color: #94a3b8;
+      margin-bottom: 12px;
     }
 
-    .badge-type {
+    .type-pill {
       display: inline-block;
-      margin-top: 10px;
-      padding: 4px 12px;
+      padding: 5px 14px;
+      background: rgba(56, 189, 248, 0.12);
+      border: 1px solid rgba(56, 189, 248, 0.35);
       border-radius: 9999px;
-      background: rgba(56, 189, 248, 0.15);
-      color: var(--primary);
-      font-size: 12px;
+      color: #38bdf8;
+      font-size: 12.5px;
       font-weight: 600;
-      border: 1px solid rgba(56, 189, 248, 0.3);
     }
 
-    .partner-card {
-      background: rgba(245, 158, 11, 0.1);
-      border: 1px solid rgba(245, 158, 11, 0.3);
-      padding: 12px;
-      border-radius: 12px;
+    .partner-banner {
+      background: linear-gradient(135deg, rgba(245, 158, 11, 0.15) 0%, rgba(217, 119, 6, 0.05) 100%);
+      border: 1px solid rgba(245, 158, 11, 0.35);
+      border-radius: 14px;
+      padding: 12px 14px;
       margin-bottom: 16px;
       display: none;
     }
 
     .partner-name {
       font-size: 14px;
-      font-weight: 600;
+      font-weight: 700;
       color: #fbbf24;
     }
 
     .partner-meta {
       font-size: 12px;
       color: #fde68a;
-      margin-top: 2px;
+      margin-top: 3px;
     }
 
-    .section-title {
-      font-size: 13px;
-      font-weight: 600;
-      color: var(--primary);
+    .sec-label {
+      font-size: 12px;
+      font-weight: 700;
+      color: #38bdf8;
       text-transform: uppercase;
-      letter-spacing: 0.5px;
-      margin: 16px 0 8px;
+      letter-spacing: 0.8px;
+      margin: 18px 4px 8px;
     }
 
     .card {
-      background: var(--card-bg);
-      border: 1px solid var(--border);
-      border-radius: 14px;
-      padding: 14px;
-      margin-bottom: 12px;
+      background: var(--card);
+      backdrop-filter: blur(12px);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      padding: 16px 14px;
+      margin-bottom: 14px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
     }
 
     .form-group {
@@ -127,174 +134,178 @@
     label {
       display: block;
       font-size: 12px;
-      color: var(--text-muted);
-      margin-bottom: 4px;
-      font-weight: 500;
+      color: #94a3b8;
+      margin-bottom: 5px;
+      font-weight: 600;
     }
 
     input, select, textarea {
       width: 100%;
       background: var(--input-bg);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 10px 12px;
-      color: var(--text-main);
+      border: 1px solid var(--input-border);
+      border-radius: 10px;
+      padding: 11px 12px;
+      color: #ffffff;
       font-size: 14px;
       outline: none;
-      transition: border-color 0.2s;
+      transition: all 0.2s ease;
     }
 
     input:focus, select:focus, textarea:focus {
-      border-color: var(--primary);
+      border-color: #38bdf8;
+      box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.15);
     }
 
     textarea {
       resize: vertical;
-      min-height: 60px;
+      min-height: 64px;
     }
 
+    /* GRID PREVIEW HỘP TRẮNG ĐẸP NHƯ GỐC */
     .grid-preview {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 8px;
-      margin-bottom: 12px;
+      gap: 10px;
+      margin-bottom: 14px;
     }
 
-    .preview-box {
-      background: var(--input-bg);
-      border: 1px solid var(--border);
-      padding: 10px;
-      border-radius: 10px;
+    .box-stat {
+      background: rgba(255, 255, 255, 0.95);
+      border-radius: 14px;
+      padding: 14px 12px;
+      color: #0f172a;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
     }
 
-    .preview-box-full {
+    .box-stat-full {
       grid-column: span 2;
     }
 
-    .preview-label {
-      font-size: 11px;
-      color: var(--text-muted);
-      margin-bottom: 2px;
+    .stat-label {
+      font-size: 12px;
+      font-weight: 500;
+      color: #64748b;
+      margin-bottom: 4px;
     }
 
-    .preview-val {
-      font-size: 15px;
-      font-weight: 700;
-      color: #fff;
+    .stat-val {
+      font-size: 16px;
+      font-weight: 800;
+      color: #0f172a;
     }
 
-    .box-profit {
-      background: rgba(16, 185, 129, 0.15);
-      border-color: rgba(16, 185, 129, 0.4);
+    .box-final-profit {
+      background: linear-gradient(135deg, rgba(16, 185, 129, 0.2) 0%, rgba(5, 150, 105, 0.1) 100%);
+      border: 1.5px solid #10b981;
+      border-radius: 14px;
+      padding: 16px 14px;
+      grid-column: span 2;
     }
 
-    .box-profit .preview-val {
+    .box-final-profit .stat-label {
       color: #34d399;
-      font-size: 18px;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+    }
+
+    .box-final-profit .stat-val {
+      color: #34d399;
+      font-size: 26px;
+      font-weight: 900;
+      margin-top: 2px;
     }
 
     .btn {
       width: 100%;
-      padding: 14px;
-      border-radius: 10px;
+      padding: 15px;
+      border-radius: 12px;
       font-size: 15px;
-      font-weight: 700;
+      font-weight: 800;
       border: none;
       cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
-      gap: 6px;
-      margin-top: 10px;
-      transition: all 0.2s;
+      letter-spacing: 0.5px;
+      margin-top: 12px;
+      transition: all 0.2s ease;
     }
 
     .btn:disabled {
-      opacity: 0.5;
+      opacity: 0.6;
       cursor: not-allowed;
     }
 
     .btn-preview {
-      background: var(--primary);
-      color: #0f172a;
+      background: #38bdf8;
+      color: #04101e;
+      box-shadow: 0 4px 16px rgba(56, 189, 248, 0.3);
     }
 
-    .btn-preview:not(:disabled):hover {
-      background: var(--primary-hover);
+    .btn-preview:active {
+      transform: scale(0.99);
     }
 
     .btn-save {
-      background: var(--success);
-      color: #fff;
+      background: #10b981;
+      color: #ffffff;
+      box-shadow: 0 4px 16px rgba(16, 185, 129, 0.35);
       display: none;
     }
 
-    .btn-save:not(:disabled):hover {
-      background: var(--success-hover);
+    .btn-save:active {
+      transform: scale(0.99);
     }
 
     .toast {
       position: fixed;
-      top: 16px;
+      top: 20px;
       left: 50%;
       transform: translateX(-50%);
-      padding: 10px 16px;
-      border-radius: 8px;
-      font-size: 13px;
-      font-weight: 500;
+      padding: 10px 18px;
+      border-radius: 10px;
+      font-size: 13.5px;
+      font-weight: 600;
       z-index: 1000;
       display: none;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-      text-align: center;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
       max-width: 90%;
+      text-align: center;
     }
 
-    .toast-error {
-      background: var(--danger);
-      color: #fff;
-    }
-
-    .toast-success {
-      background: var(--success);
-      color: #fff;
-    }
+    .toast-error { background: #ef4444; color: #fff; }
+    .toast-success { background: #10b981; color: #fff; }
 
     .loading-screen {
       position: fixed;
       inset: 0;
-      background: var(--bg-color);
+      background: var(--bg);
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
       z-index: 50;
-      gap: 12px;
-      color: var(--text-muted);
+      gap: 14px;
+      color: #94a3b8;
       font-size: 14px;
     }
 
     .spinner {
-      width: 32px;
-      height: 32px;
-      border: 3px solid var(--border);
-      border-top-color: var(--primary);
+      width: 36px;
+      height: 36px;
+      border: 3px solid rgba(56, 189, 248, 0.15);
+      border-top-color: #38bdf8;
       border-radius: 50%;
       animation: spin 0.8s linear infinite;
     }
 
-    @keyframes spin {
-      to { transform: rotate(360deg); }
-    }
+    @keyframes spin { to { transform: rotate(360deg); } }
 
     .saved-view {
       display: none;
       text-align: center;
-      padding: 40px 16px;
-    }
-
-    .saved-icon {
-      font-size: 48px;
-      margin-bottom: 16px;
+      padding: 60px 16px;
     }
   </style>
 </head>
@@ -302,32 +313,32 @@
 
   <div id="loading" class="loading-screen">
     <div class="spinner"></div>
-    <div>Đang tải dữ liệu đơn...</div>
+    <div>Đang tải loại đơn...</div>
   </div>
 
   <div id="toast" class="toast"></div>
 
   <div id="savedView" class="saved-view">
-    <div class="saved-icon">✅</div>
-    <h2 style="margin-bottom: 8px;">Đã lưu đơn thành công!</h2>
-    <p style="color: var(--text-muted); font-size: 14px; margin-bottom: 24px;">Thông tin đã được ghi vào sổ Lumii.</p>
+    <div style="font-size: 54px; margin-bottom: 16px;">✅</div>
+    <h2 style="font-size: 22px; font-weight: 800; margin-bottom: 8px;">Đã lưu đơn thành công!</h2>
+    <p style="color: #94a3b8; font-size: 14px; margin-bottom: 28px;">Dữ liệu đã được cập nhật vào hệ thống Lumii.</p>
     <button class="btn btn-preview" onclick="tg.close()">Đóng cửa sổ</button>
   </div>
 
   <form id="orderForm" style="display: none;">
     <div class="header">
-      <div class="badge-lumii">LUMII SMARTHOME</div>
+      <div class="brand">LUMII SMARTHOME</div>
       <div id="formHeading" class="title">Nhập đơn bán hàng</div>
       <div class="subtitle">Điền một lần, xem lợi nhuận rồi lưu thẳng vào sổ Lumii.</div>
-      <div id="orderTypeBadge" class="badge-type">Đang tải...</div>
+      <div id="orderTypeBadge" class="type-pill">Đang tải...</div>
     </div>
 
-    <div id="partnerBox" class="partner-card">
+    <div id="partnerBox" class="partner-banner">
       <div id="partnerName" class="partner-name">🤝 Người ký gửi</div>
       <div id="partnerMeta" class="partner-meta">Quỹ khả dụng: 0đ</div>
     </div>
 
-    <div class="section-title">1. Thông tin khách & nguồn</div>
+    <div class="sec-label">1. Thông tin khách & nguồn</div>
     <div class="card">
       <div class="form-row">
         <div class="form-group">
@@ -364,7 +375,7 @@
       </div>
     </div>
 
-    <div class="section-title">2. Sản phẩm & Doanh thu</div>
+    <div class="sec-label">2. Sản phẩm & Doanh thu</div>
     <div class="card">
       <div class="form-group">
         <label>Tên sản phẩm *</label>
@@ -396,7 +407,7 @@
       </div>
     </div>
 
-    <div class="section-title">3. Chi phí phát sinh & Phụ phí</div>
+    <div class="sec-label">3. Chi phí phát sinh & Phụ phí</div>
     <div class="card">
       <div class="form-row">
         <div class="form-group">
@@ -424,7 +435,7 @@
       </div>
     </div>
 
-    <div class="section-title">4. Vận chuyển & Thanh toán</div>
+    <div class="sec-label">4. Vận chuyển & Thanh toán</div>
     <div class="card">
       <div class="form-row">
         <div class="form-group">
@@ -482,55 +493,52 @@
       </div>
     </div>
 
-    <!-- KHUNG TÍNH TOÁN XEM TRƯỚC -->
-    <div id="previewCard" style="display: none;">
-      <div class="section-title">5. Bảng tính dòng tiền & Lợi nhuận</div>
-      <div class="card">
-        <div class="grid-preview">
-          <div class="preview-box">
-            <div class="preview-label">Tổng tiền hàng</div>
-            <div id="pSaleTotal" class="preview-val">0đ</div>
-          </div>
-          <div class="preview-box">
-            <div class="preview-label">Tổng chi phí</div>
-            <div id="pCostTotal" class="preview-val">0đ</div>
-          </div>
-          <div class="preview-box">
-            <div class="preview-label">Lãi giao dịch</div>
-            <div id="pTxProfit" class="preview-val">0đ</div>
-          </div>
-          <div class="preview-box">
-            <div class="preview-label">Tổng khách trả</div>
-            <div id="pCustPaid" class="preview-val">0đ</div>
-          </div>
+    <!-- KHUNG TÍNH TOÁN XEM TRƯỚC GỐC CHUẨN ĐẸP -->
+    <div id="previewCard" style="display: none; margin-top: 10px;">
+      <div class="grid-preview">
+        <div class="box-stat">
+          <div class="stat-label">Tổng tiền hàng</div>
+          <div id="pSaleTotal" class="stat-val">0đ</div>
+        </div>
+        <div class="box-stat">
+          <div class="stat-label">Tổng chi phí</div>
+          <div id="pCostTotal" class="stat-val">0đ</div>
+        </div>
+        <div class="box-stat">
+          <div class="stat-label">Lãi giao dịch</div>
+          <div id="pTxProfit" class="stat-val">0đ</div>
+        </div>
+        <div class="box-stat">
+          <div class="stat-label">Tổng khách thanh toán</div>
+          <div id="pCustPaid" class="stat-val">0đ</div>
+        </div>
 
-          <div id="partnerFinancials" style="display: contents;">
-            <div class="preview-box">
-              <div class="preview-label">Quỹ hiện có</div>
-              <div id="pPartnerBal" class="preview-val">0đ</div>
-            </div>
-            <div class="preview-box">
-              <div class="preview-label">Vốn quỹ dùng</div>
-              <div id="pFundUsed" class="preview-val">0đ</div>
-            </div>
-            <div class="preview-box">
-              <div id="pPartnerRateLabel" class="preview-label">Lời người ký gửi</div>
-              <div id="pPartnerProfit" class="preview-val">0đ</div>
-            </div>
-            <div class="preview-box">
-              <div class="preview-label">Tổng trả người ký gửi</div>
-              <div id="pPartnerPayout" class="preview-val">0đ</div>
-            </div>
-            <div class="preview-box preview-box-full">
-              <div class="preview-label">Lumii ứng chi phí</div>
-              <div id="pLumiiAdvance" class="preview-val">0đ</div>
-            </div>
+        <div id="partnerFinancials" style="display: contents;">
+          <div class="box-stat">
+            <div class="stat-label">Quỹ hiện có</div>
+            <div id="pPartnerBal" class="stat-val">0đ</div>
           </div>
+          <div class="box-stat">
+            <div class="stat-label">Vốn quỹ dùng</div>
+            <div id="pFundUsed" class="stat-val">0đ</div>
+          </div>
+          <div class="box-stat">
+            <div id="pPartnerRateLabel" class="stat-label">Lời người ký gửi 10%</div>
+            <div id="pPartnerProfit" class="stat-val">0đ</div>
+          </div>
+          <div class="box-stat">
+            <div class="stat-label">Tổng trả người ký gửi</div>
+            <div id="pPartnerPayout" class="stat-val">0đ</div>
+          </div>
+          <div class="box-stat box-stat-full">
+            <div class="stat-label">Lumii ứng</div>
+            <div id="pLumiiAdvance" class="stat-val">0đ</div>
+          </div>
+        </div>
 
-          <div class="preview-box preview-box-full box-profit">
-            <div class="preview-label" style="color: #34d399;">LỢI NHUẬN CUỐI LUMII</div>
-            <div id="pLumiiProfit" class="preview-val">0đ</div>
-          </div>
+        <div class="box-final-profit">
+          <div class="stat-label">LỢI NHUẬN CUỐI LUMII</div>
+          <div id="pLumiiProfit" class="stat-val">0đ</div>
         </div>
       </div>
     </div>
@@ -701,7 +709,7 @@
           document.getElementById("partnerBox").style.display = "block";
           document.getElementById("partnerName").textContent = `🤝 ${data.partner.name}`;
           document.getElementById("partnerMeta").textContent = `Quỹ khả dụng: ${formatMoney(data.partner.currentFundBalance)} · Chia lời ${data.partner.defaultProfitRate}%`;
-          document.getElementById("pPartnerRateLabel").textContent = `Lời người ký gửi (${data.partner.defaultProfitRate}%)`;
+          document.getElementById("pPartnerRateLabel").textContent = `Lời người ký gửi ${data.partner.defaultProfitRate}%`;
         }
 
         fillForm(data.form);
